@@ -24,7 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		F4CF17442F710903008A3836 /* 摊.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "摊.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4CF17442F710903008A3836 /* TanApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TanApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4CF17512F710904008A3836 /* TanAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TanAppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4CF175B2F710904008A3836 /* TanAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TanAppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -85,7 +85,7 @@
 		F4CF17452F710903008A3836 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F4CF17442F710903008A3836 /* 摊.app */,
+				F4CF17442F710903008A3836 /* TanApp.app */,
 				F4CF17512F710904008A3836 /* TanAppTests.xctest */,
 				F4CF175B2F710904008A3836 /* TanAppUITests.xctest */,
 			);
@@ -114,7 +114,7 @@
 			packageProductDependencies = (
 			);
 			productName = 3180941;
-			productReference = F4CF17442F710903008A3836 /* 摊.app */;
+			productReference = F4CF17442F710903008A3836 /* TanApp.app */;
 			productType = "com.apple.product-type.application";
 		};
 		F4CF17502F710904008A3836 /* 3180941Tests */ = {
@@ -410,7 +410,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941";
-				PRODUCT_NAME = "摊";
+				PRODUCT_NAME = TanApp;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -439,7 +439,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941";
-				PRODUCT_NAME = "摊";
+				PRODUCT_NAME = TanApp;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -460,7 +460,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/摊.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/摊";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TanApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TanApp";
 			};
 			name = Debug;
 		};
@@ -478,7 +478,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/摊.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/摊";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TanApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TanApp";
 			};
 			name = Release;
 		};
