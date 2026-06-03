@@ -38,7 +38,6 @@ struct AIArchiveBuilderView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     ownerBanner
-                    dialectPanel
                     conversation
                     draftCard
                 }
@@ -90,41 +89,6 @@ struct AIArchiveBuilderView: View {
                         .clipShape(Circle())
                 }
             }
-        }
-    }
-
-    private var dialectPanel: some View {
-        Surface {
-            Text("建档语言 / 方言")
-                .font(.system(size: 18, weight: .bold))
-            Text("摊主可以用普通话、四川话或成都话口述。AI 会按当前语言整理成标准档案，也保留方言味道。")
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-
-            Picker("建档语言", selection: $dialect) {
-                ForEach(ArchiveDialect.allCases, id: \.self) { item in
-                    Text(item.title).tag(item)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            HStack {
-                Button {
-                    simulateDialectRecording()
-                } label: {
-                    Label("方言录音 3 秒", systemImage: "mic.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.tanPrimary)
-
-                Button {
-                    speakLatestAIQuestion()
-                } label: {
-                    Label("读出问题", systemImage: "speaker.wave.2.fill")
-                }
-                .buttonStyle(.bordered)
-            }
-            .font(.system(size: 13, weight: .semibold))
         }
     }
 
@@ -204,7 +168,30 @@ struct AIArchiveBuilderView: View {
 
     private var composer: some View {
         HStack(spacing: 10) {
+            Menu {
+                ForEach(ArchiveDialect.allCases, id: \.self) { item in
+                    Button {
+                        dialect = item
+                        simulateDialectRecording()
+                    } label: {
+                        Label(item.title, systemImage: dialect == item ? "checkmark.circle.fill" : "mic.fill")
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 23, weight: .bold))
+                    Text(dialect.title)
+                        .font(.system(size: 17, weight: .black))
+                }
+                .foregroundStyle(Color.tanPrimary)
+                .frame(width: 104, height: 46)
+                .background(Color.tanPrimary.opacity(0.12))
+                .clipShape(Capsule())
+            }
+
             TextField("回答 AI 的问题，或说“修改为...”", text: $input)
+                .font(.system(size: 18, weight: .semibold))
                 .textFieldStyle(.roundedBorder)
             Button {
                 send()
@@ -307,17 +294,17 @@ private struct FlowTags: View {
 
 private enum ArchiveDialect: String, CaseIterable {
     case mandarin
-    case sichuan
     case chengdu
+    case zigong
 
     var title: String {
         switch self {
         case .mandarin:
             return "普通话"
-        case .sichuan:
-            return "四川话"
         case .chengdu:
             return "成都话"
+        case .zigong:
+            return "自贡话"
         }
     }
 
@@ -325,10 +312,10 @@ private enum ArchiveDialect: String, CaseIterable {
         switch self {
         case .mandarin:
             return "我这个摊做了二十多年，主要靠手工修补和老顾客口口相传。"
-        case .sichuan:
-            return "我这个摊摆了二十多年，修鞋、换拉链、缝衣服都整得到。"
         case .chengdu:
             return "我这个摊摊摆了二十多年，老街坊都晓得，修鞋换拉链这些手艺还在坚持。"
+        case .zigong:
+            return "我这个摊摆了二十多年，修鞋换拉链这些活路都做得来，老街坊经常来找我。"
         }
     }
 }

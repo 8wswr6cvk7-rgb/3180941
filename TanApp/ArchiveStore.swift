@@ -17,6 +17,7 @@ final class ArchiveStore: ObservableObject {
     @Published var selectedRole: AppRole = .visitor
     @Published var selectedTab: AppTab = .map
     @Published var cloudState = "已连接云端档案库"
+    @Published var mapFocusRequest: MapFocusRequest?
 
     private let cloudService: CloudArchiveService
 
@@ -90,7 +91,9 @@ final class ArchiveStore: ObservableObject {
     func likePhoto(_ photo: PhotoEntry, in archive: CityArchive) {
         updateArchive(archive.id) { item in
             guard let index = item.photos.firstIndex(where: { $0.id == photo.id }) else { return }
+            guard !item.photos[index].likedByUserIDs.contains(user.id) else { return }
             item.photos[index].likes += 1
+            item.photos[index].likedByUserIDs.append(user.id)
             if item.photos[index].contributorName == user.name {
                 user.points += 2
             }
@@ -100,11 +103,21 @@ final class ArchiveStore: ObservableObject {
     func likeComment(_ comment: CommentEntry, in archive: CityArchive) {
         updateArchive(archive.id) { item in
             guard let index = item.comments.firstIndex(where: { $0.id == comment.id }) else { return }
+            guard !item.comments[index].likedByUserIDs.contains(user.id) else { return }
             item.comments[index].likes += 1
+            item.comments[index].likedByUserIDs.append(user.id)
             if item.comments[index].contributorName == user.name {
                 user.points += 1
             }
         }
+    }
+
+    func hasLikedPhoto(_ photo: PhotoEntry) -> Bool {
+        photo.likedByUserIDs.contains(user.id)
+    }
+
+    func hasLikedComment(_ comment: CommentEntry) -> Bool {
+        comment.likedByUserIDs.contains(user.id)
     }
 
     func openArchive(_ archive: CityArchive, at coordinate: CLLocationCoordinate2D) {
@@ -156,6 +169,11 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
+    func navigateToArchiveOnMap(_ archive: CityArchive) {
+        mapFocusRequest = MapFocusRequest(archiveID: archive.id)
+        selectedTab = .map
+    }
+
     func archive(with id: UUID) -> CityArchive? {
         archives.first(where: { $0.id == id })
     }
@@ -199,4 +217,9 @@ enum AppTab: Hashable {
     case discover
     case build
     case profile
+}
+
+struct MapFocusRequest: Hashable {
+    let id = UUID()
+    let archiveID: UUID
 }

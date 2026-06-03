@@ -16,12 +16,21 @@ struct ArchiveMapView: View {
     @State private var showSearch = false
     @State private var liveLocationEnabled = false
     @State private var focusCoordinate: CLLocationCoordinate2D?
+    @State private var showLocationPrompt = false
+    @State private var pendingQuickOpenArchiveID: UUID?
 
     private var selectedArchive: CityArchive? {
         guard let selectedArchiveID else {
             return nil
         }
         return store.archive(with: selectedArchiveID)
+    }
+
+    private var quickOpenArchive: CityArchive? {
+        if let selectedArchive, selectedArchive.isUserCreated {
+            return selectedArchive
+        }
+        return store.currentUserArchives.first
     }
 
     var body: some View {
@@ -41,6 +50,20 @@ struct ArchiveMapView: View {
             VStack(spacing: 12) {
                 topControls
                 Spacer()
+
+                if store.selectedRole == .stallOwner, let quickOpenArchive {
+                    QuickOpenStallButton(archive: quickOpenArchive) {
+                        if quickOpenArchive.status == .open {
+                            store.closeArchive(quickOpenArchive)
+                        } else {
+                            pendingQuickOpenArchiveID = quickOpenArchive.id
+                            showLocationPrompt = true
+                        }
+                    }
+                    .padding(.horizontal, 34)
+                    .padding(.bottom, selectedArchive == nil ? 72 : 0)
+                    .transition(.scale.combined(with: .opacity))
+                }
 
                 if let selectedArchive {
                     ArchiveMapCard(
@@ -90,9 +113,32 @@ struct ArchiveMapView: View {
                 ArchiveDetailView(archive: archive)
             }
         }
+        .alert("需要获取位置信息", isPresented: $showLocationPrompt) {
+            Button("取消", role: .cancel) {
+                pendingQuickOpenArchiveID = nil
+            }
+            Button("允许并出摊") {
+                openPendingArchiveWithLocation()
+            }
+        } message: {
+            Text("一键出摊会使用当前位置，把摊位实时显示在地图上，并记录到上次出摊路线。")
+        }
         .onReceive(locationManager.$currentCoordinate) { coordinate in
             guard let coordinate else { return }
             focusCoordinate = coordinate
+            if let id = pendingQuickOpenArchiveID, let archive = store.archive(with: id) {
+                store.openArchive(archive, at: coordinate)
+                selectedArchiveID = archive.id
+                pendingQuickOpenArchiveID = nil
+                liveLocationEnabled = false
+                locationManager.stopUpdating()
+            }
+        }
+        .onAppear {
+            focusMapIfNeeded(store.mapFocusRequest)
+        }
+        .onChange(of: store.mapFocusRequest) { _, request in
+            focusMapIfNeeded(request)
         }
     }
 
@@ -127,6 +173,69 @@ struct ArchiveMapView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 10)
+    }
+
+    private func openPendingArchiveWithLocation() {
+        guard let id = pendingQuickOpenArchiveID, let archive = store.archive(with: id) else {
+            pendingQuickOpenArchiveID = nil
+            return
+        }
+
+        if let coordinate = locationManager.currentCoordinate {
+            store.openArchive(archive, at: coordinate)
+            focusCoordinate = coordinate
+            selectedArchiveID = archive.id
+            pendingQuickOpenArchiveID = nil
+        } else {
+            liveLocationEnabled = true
+            locationManager.requestAndStartUpdating()
+        }
+    }
+
+    private func focusMapIfNeeded(_ request: MapFocusRequest?) {
+        guard let request, let archive = store.archive(with: request.archiveID) else {
+            return
+        }
+        selectedArchiveID = archive.id
+        focusCoordinate = archive.currentLocation.coordinate
+        liveLocationEnabled = false
+        locationManager.stopUpdating()
+    }
+}
+
+private struct QuickOpenStallButton: View {
+    let archive: CityArchive
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: archive.status == .open ? "moon.zzz.fill" : "location.fill")
+                    .font(.system(size: 22, weight: .black))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(archive.status == .open ? "一键收摊" : "一键出摊")
+                        .font(.system(size: 22, weight: .black))
+                    Text(archive.name)
+                        .font(.system(size: 12, weight: .bold))
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(archive.status == .open ? "结束营业" : "实时上图")
+                    .font(.system(size: 12, weight: .black))
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(.white.opacity(0.2))
+                    .clipShape(Capsule())
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .frame(maxWidth: .infinity)
+            .frame(height: 72)
+            .background(archive.status == .open ? Color.tanInk : Color.tanPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
+        }
+        .buttonStyle(.plain)
     }
 }
 

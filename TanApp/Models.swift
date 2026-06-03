@@ -75,12 +75,14 @@ struct PhotoEntry: Identifiable, Codable, Hashable {
     var contributorName: String
     var caption: String
     var likes: Int
+    var likedByUserIDs: [UUID]
 
-    init(id: UUID = UUID(), contributorName: String, caption: String, likes: Int) {
+    init(id: UUID = UUID(), contributorName: String, caption: String, likes: Int, likedByUserIDs: [UUID] = []) {
         self.id = id
         self.contributorName = contributorName
         self.caption = caption
         self.likes = likes
+        self.likedByUserIDs = likedByUserIDs
     }
 }
 
@@ -89,12 +91,14 @@ struct CommentEntry: Identifiable, Codable, Hashable {
     var contributorName: String
     var text: String
     var likes: Int
+    var likedByUserIDs: [UUID]
 
-    init(id: UUID = UUID(), contributorName: String, text: String, likes: Int) {
+    init(id: UUID = UUID(), contributorName: String, text: String, likes: Int, likedByUserIDs: [UUID] = []) {
         self.id = id
         self.contributorName = contributorName
         self.text = text
         self.likes = likes
+        self.likedByUserIDs = likedByUserIDs
     }
 }
 

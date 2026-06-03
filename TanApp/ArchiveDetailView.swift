@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-
 struct ArchiveDetailView: View {
     @EnvironmentObject private var store: ArchiveStore
     let archive: CityArchive
@@ -103,7 +102,7 @@ struct ArchiveDetailView: View {
                 .lineSpacing(4)
 
             Button {
-                store.selectedTab = .map
+                store.navigateToArchiveOnMap(latestArchive)
             } label: {
                 Label("内置导航", systemImage: "location.north.line.fill")
             }
@@ -169,10 +168,11 @@ struct ArchiveDetailView: View {
                         Button {
                             store.likePhoto(photo, in: latestArchive)
                         } label: {
-                            Label("\(photo.likes)", systemImage: "hand.thumbsup.fill")
+                            Label("\(photo.likes)", systemImage: store.hasLikedPhoto(photo) ? "hand.thumbsup.fill" : "hand.thumbsup")
                                 .font(.system(size: 12, weight: .semibold))
                         }
                         .foregroundStyle(Color.tanPrimary)
+                        .disabled(store.hasLikedPhoto(photo))
                     }
                 }
             }
@@ -216,15 +216,17 @@ struct ArchiveDetailView: View {
                     Button {
                         store.likeComment(comment, in: latestArchive)
                     } label: {
-                        Label("\(comment.likes)", systemImage: "hand.thumbsup")
+                        Label("\(comment.likes)", systemImage: store.hasLikedComment(comment) ? "hand.thumbsup.fill" : "hand.thumbsup")
                     }
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.tanPrimary)
+                    .disabled(store.hasLikedComment(comment))
                 }
                 .padding(.vertical, 8)
             }
         }
     }
+
 }
 
 private struct FlowTags: View {
