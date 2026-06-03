@@ -6,16 +6,22 @@
 //
 
 import SwiftUI
+import AVFoundation
 
 struct AIArchiveBuilderView: View {
     @EnvironmentObject private var store: ArchiveStore
+    @Environment(\.dismiss) private var dismiss
     private let qwenAgent = QwenArchiveAgent()
+
+    var editingArchive: CityArchive? = nil
 
     @State private var messages: [BuilderMessage] = [
         BuilderMessage(role: "AI Agent", text: "先告诉我：这个摊或手艺叫什么？做了多少年？最值得记录的工序是哪一步？")
     ]
     @State private var input = ""
     @State private var isThinking = false
+    @State private var dialect: ArchiveDialect = .chengdu
+    @StateObject private var speechReader = SpeechReader()
     @State private var draft = AIArchiveDraft(
         name: "未命名档案",
         ownerName: "摊主",
@@ -32,6 +38,7 @@ struct AIArchiveBuilderView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     ownerBanner
+                    dialectPanel
                     conversation
                     draftCard
                 }
@@ -44,6 +51,15 @@ struct AIArchiveBuilderView: View {
         }
         .navigationTitle("AI 建档")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if let editingArchive {
+                draft = AIArchiveDraft(archive: editingArchive)
+                messages = [
+                    BuilderMessage(role: "AI Agent", text: "我已载入原档案。你可以直接说“把营业时间改成下午三点后”，或补充新的故事、路线、工序。")
+                ]
+            }
+            speakLatestAIQuestion()
+        }
     }
 
     private var ownerBanner: some View {
@@ -62,7 +78,53 @@ struct AIArchiveBuilderView: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Button {
+                    speakLatestAIQuestion()
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color.tanPrimary)
+                        .frame(width: 40, height: 40)
+                        .background(Color.tanPaper)
+                        .clipShape(Circle())
+                }
             }
+        }
+    }
+
+    private var dialectPanel: some View {
+        Surface {
+            Text("建档语言 / 方言")
+                .font(.system(size: 18, weight: .bold))
+            Text("摊主可以用普通话、四川话或成都话口述。AI 会按当前语言整理成标准档案，也保留方言味道。")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+
+            Picker("建档语言", selection: $dialect) {
+                ForEach(ArchiveDialect.allCases, id: \.self) { item in
+                    Text(item.title).tag(item)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            HStack {
+                Button {
+                    simulateDialectRecording()
+                } label: {
+                    Label("方言录音 3 秒", systemImage: "mic.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.tanPrimary)
+
+                Button {
+                    speakLatestAIQuestion()
+                } label: {
+                    Label("读出问题", systemImage: "speaker.wave.2.fill")
+                }
+                .buttonStyle(.bordered)
+            }
+            .font(.system(size: 13, weight: .semibold))
         }
     }
 
@@ -84,6 +146,12 @@ struct AIArchiveBuilderView: View {
                     .background(message.role == "摊户" ? Color.tanPrimary.opacity(0.12) : .white)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     if message.role != "摊户" {
+                        Button {
+                            speechReader.speak(message.text, dialect: dialect)
+                        } label: {
+                            Image(systemName: "speaker.wave.2")
+                                .foregroundStyle(Color.tanPrimary)
+                        }
                         Spacer(minLength: 40)
                     }
                 }
@@ -121,9 +189,14 @@ struct AIArchiveBuilderView: View {
                 .lineSpacing(4)
 
             Button {
-                store.saveDraft(draft)
+                if let editingArchive {
+                    store.updateArchive(editingArchive, with: draft)
+                    dismiss()
+                } else {
+                    store.saveDraft(draft)
+                }
             } label: {
-                Text("确认入库")
+                Text(editingArchive == nil ? "确认入库" : "保存修改")
             }
             .buttonStyle(PrimaryButtonStyle())
         }
@@ -153,7 +226,7 @@ struct AIArchiveBuilderView: View {
         isThinking = true
 
         Task {
-            await applyQwenAgentUpdate(from: text)
+            await applyQwenAgentUpdate(from: "建档语言：\(dialect.title)。\(text)")
         }
     }
 
@@ -166,10 +239,10 @@ struct AIArchiveBuilderView: View {
                 userName: store.user.name
             )
             draft = result.draft
-            messages.append(BuilderMessage(role: "AI Agent", text: "千问已更新档案草稿。\(result.nextQuestion)"))
+            appendAIMessage("千问已更新档案草稿。\(result.nextQuestion)")
         } catch {
             applyLocalAgentUpdate(from: text)
-            messages.append(BuilderMessage(role: "AI Agent", text: "我先用本地 Agent 更新了草稿。网络或密钥不可用时不会影响演示；下一步请补充常出现的位置、是否带徒、以及最怕失传的细节。"))
+            appendAIMessage("我先用本地 Agent 更新了草稿。网络或密钥不可用时不会影响演示；下一步请补充常出现的位置、是否带徒、以及最怕失传的细节。")
         }
         isThinking = false
     }
@@ -194,6 +267,22 @@ struct AIArchiveBuilderView: View {
         draft.summary = "AI 已根据摊户口述整理：\(text)。后续会结合用户照片、评论点赞与高积分反馈继续修订。"
         draft.craftProcess = ["口述采集", "工序拆解", "用户反馈补档", "云端同步"]
     }
+
+    private func simulateDialectRecording() {
+        input = "\(dialect.sampleText)"
+    }
+
+    private func appendAIMessage(_ text: String) {
+        messages.append(BuilderMessage(role: "AI Agent", text: text))
+        speechReader.speak(text, dialect: dialect)
+    }
+
+    private func speakLatestAIQuestion() {
+        guard let text = messages.last(where: { $0.role == "AI Agent" })?.text else {
+            return
+        }
+        speechReader.speak(text, dialect: dialect)
+    }
 }
 
 private struct BuilderMessage: Identifiable {
@@ -213,5 +302,46 @@ private struct FlowTags: View {
                 }
             }
         }
+    }
+}
+
+private enum ArchiveDialect: String, CaseIterable {
+    case mandarin
+    case sichuan
+    case chengdu
+
+    var title: String {
+        switch self {
+        case .mandarin:
+            return "普通话"
+        case .sichuan:
+            return "四川话"
+        case .chengdu:
+            return "成都话"
+        }
+    }
+
+    var sampleText: String {
+        switch self {
+        case .mandarin:
+            return "我这个摊做了二十多年，主要靠手工修补和老顾客口口相传。"
+        case .sichuan:
+            return "我这个摊摆了二十多年，修鞋、换拉链、缝衣服都整得到。"
+        case .chengdu:
+            return "我这个摊摊摆了二十多年，老街坊都晓得，修鞋换拉链这些手艺还在坚持。"
+        }
+    }
+}
+
+private final class SpeechReader: ObservableObject {
+    private let synthesizer = AVSpeechSynthesizer()
+
+    func speak(_ text: String, dialect: ArchiveDialect) {
+        synthesizer.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        utterance.rate = dialect == .mandarin ? 0.48 : 0.43
+        utterance.pitchMultiplier = dialect == .chengdu ? 0.92 : 1.0
+        synthesizer.speak(utterance)
     }
 }

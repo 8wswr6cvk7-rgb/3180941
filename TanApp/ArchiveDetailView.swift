@@ -14,6 +14,7 @@ struct ArchiveDetailView: View {
     @State private var commentText = ""
     @State private var photoCaption = ""
     @State private var showPhotoInput = false
+    @State private var showEditor = false
 
     private var latestArchive: CityArchive {
         store.archive(with: archive.id) ?? archive
@@ -36,12 +37,29 @@ struct ArchiveDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    store.toggleFavorite(latestArchive)
-                } label: {
-                    Image(systemName: store.favoriteIDs.contains(latestArchive.id) ? "heart.fill" : "heart")
-                        .foregroundStyle(Color.tanPrimary)
+                HStack {
+                    if store.selectedRole == .stallOwner && latestArchive.isUserCreated {
+                        Button {
+                            showEditor = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .foregroundStyle(Color.tanPrimary)
+                        }
+                    }
+
+                    Button {
+                        store.toggleFavorite(latestArchive)
+                    } label: {
+                        Image(systemName: store.favoriteIDs.contains(latestArchive.id) ? "heart.fill" : "heart")
+                            .foregroundStyle(Color.tanPrimary)
+                    }
                 }
+            }
+        }
+        .sheet(isPresented: $showEditor) {
+            NavigationStack {
+                AIArchiveBuilderView(editingArchive: latestArchive)
+                    .environmentObject(store)
             }
         }
     }

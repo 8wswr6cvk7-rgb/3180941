@@ -114,12 +114,14 @@ struct HomeView: View {
                 Label("发现", systemImage: "square.grid.2x2")
             }
 
-            NavigationStack {
-                AIArchiveBuilderView()
-            }
-            .tag(AppTab.build)
-            .tabItem {
-                Label("建档", systemImage: "sparkles")
+            if store.selectedRole == .stallOwner {
+                NavigationStack {
+                    AIArchiveBuilderView()
+                }
+                .tag(AppTab.build)
+                .tabItem {
+                    Label("建档", systemImage: "sparkles")
+                }
             }
 
             NavigationStack {

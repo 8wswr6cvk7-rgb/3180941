@@ -168,3 +168,16 @@ struct AIArchiveDraft: Codable, Hashable {
     var summary: String
     var craftProcess: [String]
 }
+
+extension AIArchiveDraft {
+    init(archive: CityArchive) {
+        name = archive.name
+        ownerName = archive.ownerName
+        category = archive.category
+        tags = archive.tags
+        priceOrService = archive.priceOrService
+        yearsActive = archive.yearsActive
+        summary = archive.summary
+        craftProcess = archive.craftProcess
+    }
+}

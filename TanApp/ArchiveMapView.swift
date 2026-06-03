@@ -45,6 +45,7 @@ struct ArchiveMapView: View {
                 if let selectedArchive {
                     ArchiveMapCard(
                         archive: selectedArchive,
+                        canManage: store.selectedRole == .stallOwner && selectedArchive.isUserCreated,
                         liveLocationEnabled: liveLocationEnabled,
                         onHistory: {
                             focusCoordinate = selectedArchive.currentLocation.coordinate
@@ -131,6 +132,7 @@ struct ArchiveMapView: View {
 
 private struct ArchiveMapCard: View {
     let archive: CityArchive
+    let canManage: Bool
     let liveLocationEnabled: Bool
     let onHistory: () -> Void
     let onLive: () -> Void
@@ -140,10 +142,25 @@ private struct ArchiveMapCard: View {
     var body: some View {
         Surface {
             HStack(alignment: .top) {
+                ZStack {
+                    Circle()
+                        .fill(archive.status.tint.opacity(0.16))
+                    Image(systemName: archive.category.icon)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(archive.status.tint)
+                }
+                .frame(width: 68, height: 68)
+
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("摊户名片")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.tanPrimary)
                     Text(archive.name)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(Color.tanInk)
+                    Text("\(archive.ownerName) · \(archive.yearsActive) 年 · \(archive.priceOrService)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
                     HStack {
                         TagPill(text: archive.category.title)
                         StatusBadge(status: archive.status)
@@ -162,10 +179,10 @@ private struct ArchiveMapCard: View {
             Text(archive.summary)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .lineLimit(3)
 
             VStack(alignment: .leading, spacing: 8) {
-                Label("经常出现的位置", systemImage: "clock.arrow.circlepath")
+                Label("常驻区域与上次出摊路线", systemImage: "map.fill")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.tanInk)
 
@@ -189,16 +206,16 @@ private struct ArchiveMapCard: View {
 
             HStack(spacing: 10) {
                 Button(action: onHistory) {
-                    Label("历史路线", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    Label("上次路线", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                 }
                 .buttonStyle(.bordered)
 
-                Button(action: onLive) {
-                    Label(liveLocationEnabled ? "定位中" : "实时定位", systemImage: "location.fill")
-                }
-                .buttonStyle(.bordered)
+                if canManage {
+                    Button(action: onLive) {
+                        Label(liveLocationEnabled ? "定位中" : "获取定位", systemImage: "location.fill")
+                    }
+                    .buttonStyle(.bordered)
 
-                if archive.isUserCreated {
                     Button(action: archive.status == .open ? onClose : onOpen) {
                         Text(archive.status == .open ? "收摊" : "开摊")
                     }
@@ -341,7 +358,7 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.showsCompass = false
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.setRegion(MKCoordinateRegion(center: MockArchiveData.chengduCenter.coordinate, latitudinalMeters: 4_200, longitudinalMeters: 4_200), animated: false)
+            mapView.setRegion(MKCoordinateRegion(center: MockArchiveData.chengduCenter.coordinate, latitudinalMeters: 4_200, longitudinalMeters: 4_200), animated: false)
         return mapView
     }
 
@@ -363,6 +380,9 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
             let overlays = mapView.overlays
             mapView.removeOverlays(overlays)
             let coordinates = selected.historicalStops.map { $0.coordinate.coordinate }
+            if let residentCenter = coordinates.residentCenter ?? Optional(selected.currentLocation.coordinate) {
+                mapView.addOverlay(MKCircle(center: residentCenter, radius: 420))
+            }
             if coordinates.count > 1 {
                 mapView.addOverlay(MKPolyline(coordinates: coordinates, count: coordinates.count))
             }
@@ -408,6 +428,13 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let polyline = overlay as? MKPolyline else {
+                if let circle = overlay as? MKCircle {
+                    let renderer = MKCircleRenderer(circle: circle)
+                    renderer.fillColor = UIColor(Color.tanPrimary.opacity(0.12))
+                    renderer.strokeColor = UIColor(Color.tanPrimary.opacity(0.45))
+                    renderer.lineWidth = 2
+                    return renderer
+                }
                 return MKOverlayRenderer(overlay: overlay)
             }
             let renderer = MKPolylineRenderer(polyline: polyline)
@@ -416,6 +443,17 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
             renderer.lineDashPattern = [8, 8]
             return renderer
         }
+    }
+}
+
+private extension Array where Element == CLLocationCoordinate2D {
+    var residentCenter: CLLocationCoordinate2D? {
+        guard !isEmpty else {
+            return nil
+        }
+        let latitude = map(\.latitude).reduce(0, +) / Double(count)
+        let longitude = map(\.longitude).reduce(0, +) / Double(count)
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 }
 

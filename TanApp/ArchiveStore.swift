@@ -47,6 +47,9 @@ final class ArchiveStore: ObservableObject {
     func switchRole(to role: AppRole) {
         selectedRole = role
         user.role = role
+        if role == .visitor && selectedTab == .build {
+            selectedTab = .map
+        }
         persist()
     }
 
@@ -138,6 +141,19 @@ final class ArchiveStore: ObservableObject {
         archives.insert(archive, at: 0)
         selectedTab = .map
         persist()
+    }
+
+    func updateArchive(_ archive: CityArchive, with draft: AIArchiveDraft) {
+        updateArchive(archive.id) { item in
+            item.name = draft.name
+            item.ownerName = draft.ownerName
+            item.category = draft.category
+            item.tags = draft.tags
+            item.priceOrService = draft.priceOrService
+            item.yearsActive = draft.yearsActive
+            item.summary = draft.summary
+            item.craftProcess = draft.craftProcess
+        }
     }
 
     func archive(with id: UUID) -> CityArchive? {
