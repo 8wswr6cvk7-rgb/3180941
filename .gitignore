@@ -1,0 +1,4 @@
+TanApp/LocalSecrets.json
+TanApp/LocalSecrets.swift
+*.xcuserstate
+DerivedData/

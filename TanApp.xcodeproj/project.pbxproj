@@ -25,24 +25,24 @@
 
 /* Begin PBXFileReference section */
 		F4CF17442F710903008A3836 /* TanApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TanApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F4CF17512F710904008A3836 /* TanAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TanAppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		F4CF175B2F710904008A3836 /* TanAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TanAppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4CF17512F710904008A3836 /* TanAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TanAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4CF175B2F710904008A3836 /* TanAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TanAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F4CF17462F710903008A3836 /* TanApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "TanApp";
+			path = TanApp;
 			sourceTree = "<group>";
 		};
 		F4CF17542F710904008A3836 /* TanAppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "TanAppTests";
+			path = TanAppTests;
 			sourceTree = "<group>";
 		};
 		F4CF175E2F710904008A3836 /* TanAppUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "TanAppUITests";
+			path = TanAppUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -186,7 +186,7 @@
 					};
 				};
 			};
-			buildConfigurationList = F4CF173F2F710903008A3836 /* Build configuration list for PBXProject "3180941" */;
+			buildConfigurationList = F4CF173F2F710903008A3836 /* Build configuration list for PBXProject "TanApp" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -456,7 +456,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941Tests";
-				PRODUCT_NAME = "TanAppTests";
+				PRODUCT_NAME = TanAppTests;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -474,7 +474,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941Tests";
-				PRODUCT_NAME = "TanAppTests";
+				PRODUCT_NAME = TanAppTests;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -490,7 +490,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941UITests";
-				PRODUCT_NAME = "TanAppUITests";
+				PRODUCT_NAME = TanAppUITests;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -506,7 +506,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941UITests";
-				PRODUCT_NAME = "TanAppUITests";
+				PRODUCT_NAME = TanAppUITests;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -517,7 +517,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F4CF173F2F710903008A3836 /* Build configuration list for PBXProject "3180941" */ = {
+		F4CF173F2F710903008A3836 /* Build configuration list for PBXProject "TanApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F4CF17632F710904008A3836 /* Debug */,

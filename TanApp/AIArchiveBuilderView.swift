@@ -9,10 +9,13 @@ import SwiftUI
 
 struct AIArchiveBuilderView: View {
     @EnvironmentObject private var store: ArchiveStore
+    private let qwenAgent = QwenArchiveAgent()
+
     @State private var messages: [BuilderMessage] = [
         BuilderMessage(role: "AI Agent", text: "先告诉我：这个摊或手艺叫什么？做了多少年？最值得记录的工序是哪一步？")
     ]
     @State private var input = ""
+    @State private var isThinking = false
     @State private var draft = AIArchiveDraft(
         name: "未命名档案",
         ownerName: "摊主",
@@ -85,6 +88,19 @@ struct AIArchiveBuilderView: View {
                     }
                 }
             }
+
+            if isThinking {
+                HStack {
+                    ProgressView()
+                    Text("千问正在整理口述档案...")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(12)
+                .background(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
         }
     }
 
@@ -124,7 +140,7 @@ struct AIArchiveBuilderView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(Color.tanPrimary)
             }
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isThinking)
         }
         .padding(12)
     }
@@ -133,11 +149,32 @@ struct AIArchiveBuilderView: View {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         messages.append(BuilderMessage(role: "摊户", text: text))
-        applyAgentUpdate(from: text)
         input = ""
+        isThinking = true
+
+        Task {
+            await applyQwenAgentUpdate(from: text)
+        }
     }
 
-    private func applyAgentUpdate(from text: String) {
+    @MainActor
+    private func applyQwenAgentUpdate(from text: String) async {
+        do {
+            let result = try await qwenAgent.refineDraft(
+                currentDraft: draft,
+                userText: text,
+                userName: store.user.name
+            )
+            draft = result.draft
+            messages.append(BuilderMessage(role: "AI Agent", text: "千问已更新档案草稿。\(result.nextQuestion)"))
+        } catch {
+            applyLocalAgentUpdate(from: text)
+            messages.append(BuilderMessage(role: "AI Agent", text: "我先用本地 Agent 更新了草稿。网络或密钥不可用时不会影响演示；下一步请补充常出现的位置、是否带徒、以及最怕失传的细节。"))
+        }
+        isThinking = false
+    }
+
+    private func applyLocalAgentUpdate(from text: String) {
         if text.contains("补鞋") || text.contains("缝衣") || text.contains("修") {
             draft.category = .oldTrade
             draft.tags = ["老行当", "高消失风险", "服务清单"]
@@ -156,8 +193,6 @@ struct AIArchiveBuilderView: View {
         draft.ownerName = store.user.name
         draft.summary = "AI 已根据摊户口述整理：\(text)。后续会结合用户照片、评论点赞与高积分反馈继续修订。"
         draft.craftProcess = ["口述采集", "工序拆解", "用户反馈补档", "云端同步"]
-
-        messages.append(BuilderMessage(role: "AI Agent", text: "我已更新档案草稿。还需要补充：常出现的位置、是否带徒、以及最怕失传的细节。"))
     }
 }
 
