@@ -1,8 +1,8 @@
 //
 //  StallLocationManager.swift
-//  3180941
+//  TanApp
 //
-//  Created by Codex on 2026/5/30.
+//  Created by Codex on 2026/6/3.
 //
 
 import Foundation
@@ -19,7 +19,7 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 10
+        manager.distanceFilter = 8
     }
 
     func requestAndStartUpdating() {
@@ -32,7 +32,7 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
             manager.startUpdatingLocation()
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
-        case .restricted, .denied:
+        case .denied, .restricted:
             break
         @unknown default:
             break
@@ -45,7 +45,6 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
-
         if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse {
             manager.startUpdatingLocation()
         }

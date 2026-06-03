@@ -25,24 +25,24 @@
 
 /* Begin PBXFileReference section */
 		F4CF17442F710903008A3836 /* 摊.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "摊.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		F4CF17512F710904008A3836 /* 摊-单元测试功能实现.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "摊-单元测试功能实现.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		F4CF175B2F710904008A3836 /* 摊-界面测试功能实现.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "摊-界面测试功能实现.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4CF17512F710904008A3836 /* TanAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TanAppTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4CF175B2F710904008A3836 /* TanAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TanAppUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		F4CF17462F710903008A3836 /* 摊-主工程功能实现 */ = {
+		F4CF17462F710903008A3836 /* TanApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "摊-主工程功能实现";
+			path = "TanApp";
 			sourceTree = "<group>";
 		};
-		F4CF17542F710904008A3836 /* 摊-单元测试功能实现 */ = {
+		F4CF17542F710904008A3836 /* TanAppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "摊-单元测试功能实现";
+			path = "TanAppTests";
 			sourceTree = "<group>";
 		};
-		F4CF175E2F710904008A3836 /* 摊-界面测试功能实现 */ = {
+		F4CF175E2F710904008A3836 /* TanAppUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "摊-界面测试功能实现";
+			path = "TanAppUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -75,9 +75,9 @@
 		F4CF173B2F710903008A3836 = {
 			isa = PBXGroup;
 			children = (
-				F4CF17462F710903008A3836 /* 摊-主工程功能实现 */,
-				F4CF17542F710904008A3836 /* 摊-单元测试功能实现 */,
-				F4CF175E2F710904008A3836 /* 摊-界面测试功能实现 */,
+				F4CF17462F710903008A3836 /* TanApp */,
+				F4CF17542F710904008A3836 /* TanAppTests */,
+				F4CF175E2F710904008A3836 /* TanAppUITests */,
 				F4CF17452F710903008A3836 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -86,8 +86,8 @@
 			isa = PBXGroup;
 			children = (
 				F4CF17442F710903008A3836 /* 摊.app */,
-				F4CF17512F710904008A3836 /* 摊-单元测试功能实现.xctest */,
-				F4CF175B2F710904008A3836 /* 摊-界面测试功能实现.xctest */,
+				F4CF17512F710904008A3836 /* TanAppTests.xctest */,
+				F4CF175B2F710904008A3836 /* TanAppUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -108,7 +108,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				F4CF17462F710903008A3836 /* 摊-主工程功能实现 */,
+				F4CF17462F710903008A3836 /* TanApp */,
 			);
 			name = 3180941;
 			packageProductDependencies = (
@@ -131,13 +131,13 @@
 				F4CF17532F710904008A3836 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				F4CF17542F710904008A3836 /* 摊-单元测试功能实现 */,
+				F4CF17542F710904008A3836 /* TanAppTests */,
 			);
 			name = 3180941Tests;
 			packageProductDependencies = (
 			);
 			productName = 3180941Tests;
-			productReference = F4CF17512F710904008A3836 /* 摊-单元测试功能实现.xctest */;
+			productReference = F4CF17512F710904008A3836 /* TanAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		F4CF175A2F710904008A3836 /* 3180941UITests */ = {
@@ -154,13 +154,13 @@
 				F4CF175D2F710904008A3836 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				F4CF175E2F710904008A3836 /* 摊-界面测试功能实现 */,
+				F4CF175E2F710904008A3836 /* TanAppUITests */,
 			);
 			name = 3180941UITests;
 			packageProductDependencies = (
 			);
 			productName = 3180941UITests;
-			productReference = F4CF175B2F710904008A3836 /* 摊-界面测试功能实现.xctest */;
+			productReference = F4CF175B2F710904008A3836 /* TanAppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -456,7 +456,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941Tests";
-				PRODUCT_NAME = "摊-单元测试功能实现";
+				PRODUCT_NAME = "TanAppTests";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -474,7 +474,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941Tests";
-				PRODUCT_NAME = "摊-单元测试功能实现";
+				PRODUCT_NAME = "TanAppTests";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -490,7 +490,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941UITests";
-				PRODUCT_NAME = "摊-界面测试功能实现";
+				PRODUCT_NAME = "TanAppUITests";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -506,7 +506,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.example.-180941UITests";
-				PRODUCT_NAME = "摊-界面测试功能实现";
+				PRODUCT_NAME = "TanAppUITests";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
