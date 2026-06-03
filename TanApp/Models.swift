@@ -74,13 +74,15 @@ struct PhotoEntry: Identifiable, Codable, Hashable {
     let id: UUID
     var contributorName: String
     var caption: String
+    var imageData: Data?
     var likes: Int
     var likedByUserIDs: [UUID]
 
-    init(id: UUID = UUID(), contributorName: String, caption: String, likes: Int, likedByUserIDs: [UUID] = []) {
+    init(id: UUID = UUID(), contributorName: String, caption: String, imageData: Data? = nil, likes: Int, likedByUserIDs: [UUID] = []) {
         self.id = id
         self.contributorName = contributorName
         self.caption = caption
+        self.imageData = imageData
         self.likes = likes
         self.likedByUserIDs = likedByUserIDs
     }

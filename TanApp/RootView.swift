@@ -106,12 +106,14 @@ struct HomeView: View {
                 Label("地图", systemImage: "map")
             }
 
-            NavigationStack {
-                DiscoverView()
-            }
-            .tag(AppTab.discover)
-            .tabItem {
-                Label("发现", systemImage: "square.grid.2x2")
+            if store.selectedRole == .visitor {
+                NavigationStack {
+                    DiscoverView()
+                }
+                .tag(AppTab.discover)
+                .tabItem {
+                    Label("发现", systemImage: "square.grid.2x2")
+                }
             }
 
             if store.selectedRole == .stallOwner {

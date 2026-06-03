@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+import PhotosUI
+import UIKit
+
 struct ArchiveDetailView: View {
     @EnvironmentObject private var store: ArchiveStore
     let archive: CityArchive
@@ -14,9 +17,16 @@ struct ArchiveDetailView: View {
     @State private var photoCaption = ""
     @State private var showPhotoInput = false
     @State private var showEditor = false
+    @State private var showCamera = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var selectedPhotoData: Data?
 
     private var latestArchive: CityArchive {
         store.archive(with: archive.id) ?? archive
+    }
+
+    private var canUploadPhoto: Bool {
+        store.selectedRole == .visitor
     }
 
     var body: some View {
@@ -59,6 +69,23 @@ struct ArchiveDetailView: View {
             NavigationStack {
                 AIArchiveBuilderView(editingArchive: latestArchive)
                     .environmentObject(store)
+            }
+        }
+        .sheet(isPresented: $showCamera) {
+            CameraPicker { image in
+                selectedPhotoData = image.jpegData(compressionQuality: 0.82)
+                showPhotoInput = true
+            }
+        }
+        .onChange(of: selectedPhotoItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    await MainActor.run {
+                        selectedPhotoData = data
+                        showPhotoInput = true
+                    }
+                }
             }
         }
     }
@@ -137,33 +164,78 @@ struct ArchiveDetailView: View {
                 Text("用户照片")
                     .font(.system(size: 18, weight: .bold))
                 Spacer()
-                Button {
-                    showPhotoInput.toggle()
-                } label: {
-                    Label("上传", systemImage: "camera.fill")
+                if canUploadPhoto {
+                    Button {
+                        showPhotoInput.toggle()
+                    } label: {
+                        Label("上传", systemImage: "camera.fill")
+                    }
+                    .font(.system(size: 13, weight: .bold))
                 }
-                .font(.system(size: 13, weight: .bold))
             }
 
             if showPhotoInput {
-                HStack {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let selectedPhotoData {
+                        UploadedPhotoPreview(imageData: selectedPhotoData, caption: photoCaption.isEmpty ? "待发布照片" : photoCaption)
+                            .frame(height: 160)
+                    } else {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.tanPrimary.opacity(0.08))
+                            .frame(height: 110)
+                            .overlay {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "photo.on.rectangle.angled")
+                                        .font(.system(size: 28, weight: .bold))
+                                    Text("先拍照或从相册选择一张现场照片")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                                .foregroundStyle(Color.tanPrimary)
+                            }
+                    }
+
                     TextField("照片说明", text: $photoCaption)
                         .textFieldStyle(.roundedBorder)
-                    Button("发布") {
-                        let caption = photoCaption.isEmpty ? "用户补充照片" : photoCaption
-                        store.addPhoto(to: latestArchive, caption: caption)
-                        photoCaption = ""
-                        showPhotoInput = false
+
+                    HStack(spacing: 10) {
+                        Button {
+                            if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                                showCamera = true
+                            } else {
+                                selectedPhotoData = makeMockCameraPhotoData()
+                            }
+                        } label: {
+                            Label("拍照", systemImage: "camera.fill")
+                        }
+                        .buttonStyle(.bordered)
+
+                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                            Label("从相册选择", systemImage: "photo.fill.on.rectangle.fill")
+                        }
+                        .buttonStyle(.bordered)
+
+                        Spacer()
+
+                        Button("发布") {
+                            let caption = photoCaption.isEmpty ? "用户补充现场照片" : photoCaption
+                            store.addPhoto(to: latestArchive, caption: caption, imageData: selectedPhotoData)
+                            photoCaption = ""
+                            selectedPhotoData = nil
+                            selectedPhotoItem = nil
+                            showPhotoInput = false
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.tanPrimary)
+                        .disabled(selectedPhotoData == nil)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.tanPrimary)
+                    .font(.system(size: 13, weight: .bold))
                 }
             }
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
                 ForEach(latestArchive.photos) { photo in
                     VStack(alignment: .leading, spacing: 6) {
-                        PhotoPlaceholder(caption: photo.caption)
+                        UploadedPhotoPreview(imageData: photo.imageData, caption: photo.caption)
                             .frame(height: 92)
                         Button {
                             store.likePhoto(photo, in: latestArchive)
@@ -227,6 +299,93 @@ struct ArchiveDetailView: View {
         }
     }
 
+    private func makeMockCameraPhotoData() -> Data? {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 650))
+        let image = renderer.image { context in
+            UIColor(Color.tanPrimary.opacity(0.22)).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 900, height: 650))
+
+            UIColor(Color.tanPaper).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 70, y: 70, width: 760, height: 510), cornerRadius: 44).fill()
+
+            UIColor(Color.tanPrimary).setFill()
+            UIBezierPath(ovalIn: CGRect(x: 390, y: 225, width: 120, height: 120)).fill()
+
+            let title = "现场拍照模拟"
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 48, weight: .black),
+                .foregroundColor: UIColor(Color.tanInk)
+            ]
+            title.draw(at: CGPoint(x: 285, y: 375), withAttributes: attributes)
+        }
+        return image.jpegData(compressionQuality: 0.82)
+    }
+
+}
+
+private struct UploadedPhotoPreview: View {
+    let imageData: Data?
+    let caption: String
+
+    var body: some View {
+        Group {
+            if let imageData, let image = UIImage(data: imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.18))
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            Text(caption)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.tanInk)
+                .lineLimit(2)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white.opacity(0.72))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private struct CameraPicker: UIViewControllerRepresentable {
+    @Environment(\.dismiss) private var dismiss
+    let onImagePicked: (UIImage) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraPicker
+
+        init(parent: CameraPicker) {
+            self.parent = parent
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onImagePicked(image)
+            }
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
 }
 
 private struct FlowTags: View {

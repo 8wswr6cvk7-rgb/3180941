@@ -144,15 +144,17 @@ struct ArchiveMapView: View {
 
     private var topControls: some View {
         HStack {
-            Button {
-                showSearch = true
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color.tanPrimary)
-                    .clipShape(Circle())
+            if store.selectedRole == .visitor {
+                Button {
+                    showSearch = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.tanPrimary)
+                        .clipShape(Circle())
+                }
             }
 
             Spacer()

@@ -43,14 +43,13 @@ final class ArchiveStore: ObservableObject {
         selectedRole = role
         user.role = role
         isLoggedIn = true
+        normalizeSelectedTab(for: role)
     }
 
     func switchRole(to role: AppRole) {
         selectedRole = role
         user.role = role
-        if role == .visitor && selectedTab == .build {
-            selectedTab = .map
-        }
+        normalizeSelectedTab(for: role)
         persist()
     }
 
@@ -76,9 +75,9 @@ final class ArchiveStore: ObservableObject {
         persist()
     }
 
-    func addPhoto(to archive: CityArchive, caption: String) {
+    func addPhoto(to archive: CityArchive, caption: String, imageData: Data?) {
         updateArchive(archive.id) { item in
-            item.photos.insert(PhotoEntry(contributorName: user.name, caption: caption, likes: 0), at: 0)
+            item.photos.insert(PhotoEntry(contributorName: user.name, caption: caption, imageData: imageData, likes: 0), at: 0)
         }
     }
 
@@ -208,6 +207,15 @@ final class ArchiveStore: ObservableObject {
             } catch {
                 cloudState = "云端同步失败，稍后重试"
             }
+        }
+    }
+
+    private func normalizeSelectedTab(for role: AppRole) {
+        if role == .visitor && selectedTab == .build {
+            selectedTab = .map
+        }
+        if role == .stallOwner && selectedTab == .discover {
+            selectedTab = .map
         }
     }
 }

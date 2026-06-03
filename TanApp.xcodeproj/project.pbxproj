@@ -398,6 +398,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "摊";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于用户拍摄摊位现场照片，补充市井档案。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于开摊时获取当前位置，并把摊位实时显示在地图上。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -427,6 +428,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "摊";
+				INFOPLIST_KEY_NSCameraUsageDescription = "用于用户拍摄摊位现场照片，补充市井档案。";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "用于开摊时获取当前位置，并把摊位实时显示在地图上。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
