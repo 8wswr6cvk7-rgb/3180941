@@ -21,6 +21,8 @@ struct AIArchiveBuilderView: View {
     @State private var input = ""
     @State private var isThinking = false
     @State private var dialect: ArchiveDialect = .chengdu
+    @State private var showExamplePrompt = true
+    @State private var toastMessage: String?
     @StateObject private var speechReader = SpeechReader()
     @State private var draft = AIArchiveDraft(
         name: "未命名档案",
@@ -39,8 +41,12 @@ struct AIArchiveBuilderView: View {
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 14) {
                         buildSteps
+                        if showExamplePrompt {
+                            examplePromptCard
+                        }
                         ownerBanner
                         conversation
+                        quickPromptChips
                         draftCard
                     }
                     .frame(width: max(proxy.size.width - 32, 0), alignment: .leading)
@@ -54,6 +60,7 @@ struct AIArchiveBuilderView: View {
             }
         }
         .background(Color.tanPaper)
+        .toastOverlay(toastMessage)
         .navigationTitle("AI 建档")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -127,6 +134,49 @@ struct AIArchiveBuilderView: View {
         }
     }
 
+    private var examplePromptCard: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "quote.bubble.fill")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.tanPrimary)
+                .frame(width: 34, height: 34)
+                .background(Color.mutedOrange.opacity(0.65))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("不知道怎么开始？")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(Color.tanInk)
+                Text("你可以这样说：我是王嬢嬢，在玉林路卖糖油果子，做了二十多年，老顾客都喜欢下午来。")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.tanInk.opacity(0.68))
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    showExamplePrompt = false
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(Color.tanInk.opacity(0.52))
+                    .frame(width: 28, height: 28)
+                    .background(.white.opacity(0.7))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(Color.mutedOrange.opacity(0.38))
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                .stroke(Color.white.opacity(0.82))
+        }
+    }
+
     private var conversation: some View {
         VStack(spacing: 10) {
             ForEach(messages) { message in
@@ -167,20 +217,44 @@ struct AIArchiveBuilderView: View {
             }
 
             if isThinking {
-                HStack {
-                    ProgressView()
-                    Text("千问正在整理口述档案...")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                    Spacer()
-                }
-                .padding(12)
-                .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+                AIProcessCard()
             }
         }
+    }
+
+    private var quickPromptChips: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("可以先从这些说起")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.tanInk.opacity(0.62))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(quickPrompts, id: \.self) { prompt in
+                        Button {
+                            input = prompt
+                        } label: {
+                            Text(prompt)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color.tanPrimary)
+                                .padding(.horizontal, 12)
+                                .frame(height: 34)
+                                .background(.white)
+                                .clipShape(Capsule())
+                                .overlay {
+                                    Capsule().stroke(Color.tanLine)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private var quickPrompts: [String] {
+        ["我卖什么？", "在哪出摊？", "做了多少年？", "有什么老顾客故事？", "价格大概多少？"]
     }
 
     private var draftCard: some View {
@@ -227,12 +301,7 @@ struct AIArchiveBuilderView: View {
             }
 
             Button {
-                if let editingArchive {
-                    store.updateArchive(editingArchive, with: draft)
-                    dismiss()
-                } else {
-                    store.saveDraft(draft)
-                }
+                saveCurrentDraft()
             } label: {
                 Text(editingArchive == nil ? "确认入库" : "保存修改")
             }
@@ -303,6 +372,24 @@ struct AIArchiveBuilderView: View {
 
         Task {
             await applyQwenAgentUpdate(from: "建档语言：\(dialect.title)。\(text)")
+        }
+    }
+
+    private func saveCurrentDraft() {
+        if let editingArchive {
+            store.updateArchive(editingArchive, with: draft)
+            showToast("档案修改已保存", binding: $toastMessage)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                dismiss()
+            }
+        } else {
+            showToast("档案已入库，可以在地图上看到它了", binding: $toastMessage, duration: 1.2)
+            let draftToSave = draft
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 650_000_000)
+                store.saveDraft(draftToSave)
+            }
         }
     }
 
@@ -386,6 +473,53 @@ private struct ArchiveBuildStep: View {
             Text(title)
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(isHighlighted ? Color.tanPrimary : Color.tanInk.opacity(0.58))
+        }
+    }
+}
+
+private struct AIProcessCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("正在整理档案…")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(Color.tanInk)
+
+            AIProcessRow(icon: "checkmark.circle.fill", text: "识别口述内容", isLoading: false)
+            AIProcessRow(icon: "checkmark.circle.fill", text: "提取摊位信息", isLoading: false)
+            AIProcessRow(icon: "sparkles", text: "生成档案卡片", isLoading: true)
+        }
+        .padding(14)
+        .background(.white)
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                .stroke(Color.tanLine)
+        }
+        .shadow(color: Color.tanInk.opacity(0.05), radius: 10, x: 0, y: 6)
+    }
+}
+
+private struct AIProcessRow: View {
+    let icon: String
+    let text: String
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.78)
+                    .frame(width: 20, height: 20)
+            } else {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.heritageGreen)
+                    .frame(width: 20, height: 20)
+            }
+            Text(text)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.tanInk.opacity(0.7))
+            Spacer()
         }
     }
 }

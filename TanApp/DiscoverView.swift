@@ -16,22 +16,31 @@ struct DiscoverView: View {
         store.searchArchives(query: query, category: selectedCategory)
     }
 
+    private let hotKeywords = ["小吃", "修补", "非遗", "消失预警", "玉林路"]
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 recommendBanner
                 searchBar
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    hotKeywordsView
+                }
                 categoryTabs
 
                 Text("市井档案 + 老手艺 / 非遗")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.tanInk)
 
-                ForEach(archives) { archive in
-                    NavigationLink(value: archive.id) {
-                        ArchiveRow(archive: archive)
+                if archives.isEmpty {
+                    EmptyStateView(text: "暂时没找到这个摊，换个关键词试试。", icon: "magnifyingglass")
+                } else {
+                    ForEach(archives) { archive in
+                        NavigationLink(value: archive.id) {
+                            ArchiveRow(archive: archive)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(16)
@@ -99,13 +108,34 @@ struct DiscoverView: View {
         .shadow(color: Color.tanInk.opacity(0.06), radius: 10, x: 0, y: 6)
     }
 
+    private var hotKeywordsView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("大家在找")
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(Color.tanInk.opacity(0.62))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(hotKeywords, id: \.self) { keyword in
+                        Button {
+                            query = keyword
+                        } label: {
+                            TagPill(text: keyword)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
     private var categoryTabs: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 Button {
                     selectedCategory = nil
                 } label: {
-                    TagPill(text: "全部", isSelected: selectedCategory == nil)
+                    TagPill(text: "全部 \(store.archives.count)", isSelected: selectedCategory == nil)
                 }
                 .buttonStyle(.plain)
                 ForEach(ArchiveCategory.allCases, id: \.self) { category in
@@ -115,7 +145,7 @@ struct DiscoverView: View {
                         HStack(spacing: 5) {
                             Image(systemName: category.icon)
                                 .font(.system(size: 12, weight: .bold))
-                            Text(category.title)
+                            Text("\(category.title) \(count(for: category))")
                         }
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(selectedCategory == category ? .white : Color.tanInk)
@@ -133,5 +163,9 @@ struct DiscoverView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: selectedCategory)
+    }
+
+    private func count(for category: ArchiveCategory) -> Int {
+        store.archives.filter { $0.category == category }.count
     }
 }

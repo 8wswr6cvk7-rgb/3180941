@@ -20,6 +20,7 @@ struct ArchiveDetailView: View {
     @State private var showCamera = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var selectedPhotoData: Data?
+    @State private var toastMessage: String?
 
     private var latestArchive: CityArchive {
         store.archive(with: archive.id) ?? archive
@@ -30,19 +31,25 @@ struct ArchiveDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                hero
-                story
-                activityRange
-                process
-                photoWall
-                comments
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    hero
+                    story
+                    contributionActions(proxy: proxy)
+                    activityRange
+                    process
+                    photoWall
+                        .id("photos")
+                    comments
+                        .id("comments")
+                }
+                .padding(16)
+                .padding(.bottom, 20)
             }
-            .padding(16)
-            .padding(.bottom, 20)
         }
         .background(Color.tanPaper.ignoresSafeArea())
+        .toastOverlay(toastMessage)
         .navigationTitle(latestArchive.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -58,7 +65,9 @@ struct ArchiveDetailView: View {
                     }
 
                     Button {
+                        let wasFavorite = store.favoriteIDs.contains(latestArchive.id)
                         store.toggleFavorite(latestArchive)
+                        showToast(wasFavorite ? "已取消收藏" : "已收藏", binding: $toastMessage)
                     } label: {
                         Image(systemName: store.favoriteIDs.contains(latestArchive.id) ? "heart.fill" : "heart")
                             .foregroundStyle(Color.tanPrimary)
@@ -88,6 +97,57 @@ struct ArchiveDetailView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func contributionActions(proxy: ScrollViewProxy) -> some View {
+        Surface {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("我来补档")
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(Color.tanInk)
+                Text("看到、听到、记得的线索，都能帮这份市井记忆更完整。")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showPhotoInput = true
+                        proxy.scrollTo("photos", anchor: .top)
+                    }
+                } label: {
+                    Label("补一张照片", systemImage: "camera.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.tanPrimary)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        if commentText.isEmpty {
+                            commentText = "我记得："
+                        }
+                        proxy.scrollTo("comments", anchor: .top)
+                    }
+                } label: {
+                    Label("补一句故事", systemImage: "text.bubble.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .font(.system(size: 13, weight: .bold))
+
+            Button {
+                showToast("感谢确认，我们会把这条线索加入档案。", binding: $toastMessage)
+            } label: {
+                Label("这个摊还在吗？", systemImage: "checkmark.seal.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -304,6 +364,7 @@ struct ArchiveDetailView: View {
                         Button("发布") {
                             let caption = photoCaption.isEmpty ? "用户补充现场照片" : photoCaption
                             store.addPhoto(to: latestArchive, caption: caption, imageData: selectedPhotoData)
+                            showToast("照片已加入档案", binding: $toastMessage)
                             photoCaption = ""
                             selectedPhotoData = nil
                             selectedPhotoItem = nil
@@ -326,7 +387,9 @@ struct ArchiveDetailView: View {
                             UploadedPhotoPreview(imageData: photo.imageData, caption: photo.caption)
                                 .frame(height: 96)
                             Button {
+                                guard !store.hasLikedPhoto(photo) else { return }
                                 store.likePhoto(photo, in: latestArchive)
+                                showToast("已为这份记忆点赞", binding: $toastMessage)
                             } label: {
                                 Label("\(photo.likes)", systemImage: store.hasLikedPhoto(photo) ? "hand.thumbsup.fill" : "hand.thumbsup")
                                     .font(.system(size: 12, weight: .bold))
@@ -361,6 +424,7 @@ struct ArchiveDetailView: View {
                 Button("发送") {
                     guard !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     store.addComment(to: latestArchive, text: commentText)
+                    showToast("故事已加入档案", binding: $toastMessage)
                     commentText = ""
                 }
                 .buttonStyle(.borderedProminent)
@@ -368,7 +432,7 @@ struct ArchiveDetailView: View {
             }
 
             if latestArchive.comments.isEmpty {
-                EmptyStateView(text: "还没有街坊补档，来留下第一条线索。")
+                EmptyStateView(text: "还没有人留下故事，写下你的第一句记忆。", icon: "text.bubble")
             } else {
                 ForEach(latestArchive.comments) { comment in
                     HStack(alignment: .top, spacing: 10) {
@@ -391,7 +455,9 @@ struct ArchiveDetailView: View {
                         }
                         Spacer()
                         Button {
+                            guard !store.hasLikedComment(comment) else { return }
                             store.likeComment(comment, in: latestArchive)
+                            showToast("已为这份记忆点赞", binding: $toastMessage)
                         } label: {
                             Label("\(comment.likes)", systemImage: store.hasLikedComment(comment) ? "hand.thumbsup.fill" : "hand.thumbsup")
                                 .padding(.horizontal, 9)

@@ -80,11 +80,12 @@ struct PhotoPlaceholder: View {
 
 struct EmptyStateView: View {
     let text: String
+    var icon: String = "leaf.fill"
 
     var body: some View {
         Surface {
             VStack(spacing: 10) {
-                Image(systemName: "leaf.fill")
+                Image(systemName: icon)
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Color.heritageGreen)
                     .frame(width: 48, height: 48)
@@ -97,6 +98,39 @@ struct EmptyStateView: View {
             }
             .frame(maxWidth: .infinity)
         }
+    }
+}
+
+struct ToastView: View {
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.78))
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 8)
+            .padding(.horizontal, 18)
+    }
+}
+
+struct ToastOverlayModifier: ViewModifier {
+    let message: String?
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if let message {
+                    ToastView(message: message)
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(20)
+                }
+            }
     }
 }
 
@@ -114,11 +148,31 @@ extension View {
         modifier(FixedTabBackground())
     }
 
+    func toastOverlay(_ message: String?) -> some View {
+        modifier(ToastOverlayModifier(message: message))
+    }
+
     func chineseFriendlyInput() -> some View {
         self
             .keyboardType(.default)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+    }
+}
+
+@MainActor
+func showToast(_ message: String, binding: Binding<String?>, duration: Double = 1.5) {
+    withAnimation(.easeInOut(duration: 0.18)) {
+        binding.wrappedValue = message
+    }
+    Task { @MainActor in
+        let nanoseconds = UInt64(duration * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: nanoseconds)
+        if binding.wrappedValue == message {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                binding.wrappedValue = nil
+            }
+        }
     }
 }
 

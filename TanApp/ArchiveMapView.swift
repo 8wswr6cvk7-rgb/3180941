@@ -19,6 +19,8 @@ struct ArchiveMapView: View {
     @State private var pendingQuickOpenArchiveID: UUID?
     @State private var visibleRouteArchiveID: UUID?
     @State private var isMapCardCollapsed = false
+    @State private var showMapHint = true
+    @State private var toastMessage: String?
 
     private var selectedArchive: CityArchive? {
         guard let selectedArchiveID else {
@@ -53,12 +55,22 @@ struct ArchiveMapView: View {
 
             VStack(spacing: 12) {
                 topControls
+                if showMapHint && selectedArchive == nil {
+                    MapHintCard {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showMapHint = false
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 Spacer()
 
                 if store.selectedRole == .stallOwner, let quickOpenArchive {
                     QuickOpenStallButton(archive: quickOpenArchive) {
                         if quickOpenArchive.status == .open {
                             store.closeArchive(quickOpenArchive)
+                            showToast("已收摊，地图会保留你的档案", binding: $toastMessage)
                         } else {
                             pendingQuickOpenArchiveID = quickOpenArchive.id
                             openPendingArchiveWithLocation()
@@ -80,6 +92,9 @@ struct ArchiveMapView: View {
                             visibleRouteArchiveID = selectedArchive.id
                             focusCoordinate = selectedArchive.currentLocation.coordinate
                         },
+                        onVisited: {
+                            showToast("感谢补档，已记录你的到访", binding: $toastMessage)
+                        },
                         onLive: {
                             liveLocationEnabled.toggle()
                             if liveLocationEnabled {
@@ -94,6 +109,7 @@ struct ArchiveMapView: View {
                         },
                         onClose: {
                             store.closeArchive(selectedArchive)
+                            showToast("已收摊，街坊还能看到历史档案", binding: $toastMessage)
                         },
                         onDismiss: {
                             withAnimation(.easeInOut(duration: 0.2)) {
@@ -110,6 +126,7 @@ struct ArchiveMapView: View {
             }
         }
         .background(Color.tanPaper)
+        .toastOverlay(toastMessage)
         .navigationTitle("市井地图")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showSearch) {
@@ -136,11 +153,19 @@ struct ArchiveMapView: View {
                 selectedArchiveID = archive.id
                 pendingQuickOpenArchiveID = nil
                 liveLocationEnabled = false
+                isMapCardCollapsed = false
                 locationManager.stopUpdating()
+                showToast("已开摊，当前位置会显示在地图上", binding: $toastMessage)
             }
         }
         .onAppear {
             focusMapIfNeeded(store.mapFocusRequest)
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showMapHint = false
+                }
+            }
         }
         .onChange(of: store.mapFocusRequest) { _, request in
             focusMapIfNeeded(request)
@@ -207,6 +232,7 @@ struct ArchiveMapView: View {
             selectedArchiveID = archive.id
             pendingQuickOpenArchiveID = nil
             isMapCardCollapsed = false
+            showToast("已开摊，当前位置会显示在地图上", binding: $toastMessage)
         } else {
             liveLocationEnabled = true
             locationManager.requestAndStartUpdating()
@@ -223,6 +249,43 @@ struct ArchiveMapView: View {
         liveLocationEnabled = false
         isMapCardCollapsed = false
         locationManager.stopUpdating()
+    }
+}
+
+private struct MapHintCard: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "hand.tap.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color.tanPrimary)
+                .frame(width: 34, height: 34)
+                .background(Color.mutedOrange.opacity(0.72))
+                .clipShape(Circle())
+            Text("点一点地图上的摊位，查看故事和路线")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.tanInk)
+                .lineLimit(2)
+            Spacer()
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(Color.tanInk.opacity(0.55))
+                    .frame(width: 28, height: 28)
+                    .background(Color.tanPaper.opacity(0.9))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(.white.opacity(0.94))
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                .stroke(Color.tanLine)
+        }
+        .shadow(color: Color.tanInk.opacity(0.1), radius: 14, x: 0, y: 8)
     }
 }
 
@@ -269,6 +332,7 @@ private struct ArchiveMapCard: View {
     let liveLocationEnabled: Bool
     let routeVisible: Bool
     let onHistory: () -> Void
+    let onVisited: () -> Void
     let onLive: () -> Void
     let onOpen: () -> Void
     let onClose: () -> Void
@@ -378,6 +442,22 @@ private struct ArchiveMapCard: View {
                 .lineSpacing(3)
                 .lineLimit(3)
 
+            HStack(spacing: 10) {
+                NavigationLink(value: archive.id) {
+                    Label("查看档案", systemImage: "doc.text.magnifyingglass")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.tanPrimary)
+
+                Button(action: onVisited) {
+                    Label("我去过", systemImage: "figure.walk.arrival")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .font(.system(size: 14, weight: .bold))
+
             VStack(alignment: .leading, spacing: 8) {
                 Label(routeVisible ? "活动范围与上次路线" : "活动范围", systemImage: "map.fill")
                     .font(.system(size: 13, weight: .bold))
@@ -454,6 +534,8 @@ private struct ArchiveSearchSheet: View {
         store.searchArchives(query: query, category: category)
     }
 
+    private let hotKeywords = ["小吃", "修补", "非遗", "消失预警", "玉林路"]
+
     var body: some View {
         NavigationStack {
             content
@@ -466,6 +548,9 @@ private struct ArchiveSearchSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 searchField
+                if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    hotKeywordsView
+                }
                 categoryFilters
                 resultsList
             }
@@ -490,6 +575,27 @@ private struct ArchiveSearchSheet: View {
         .shadow(color: Color.tanInk.opacity(0.06), radius: 10, x: 0, y: 6)
     }
 
+    private var hotKeywordsView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("大家在找")
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(Color.tanInk.opacity(0.62))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(hotKeywords, id: \.self) { keyword in
+                        Button {
+                            query = keyword
+                        } label: {
+                            TagPill(text: keyword)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
     private var categoryFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -507,9 +613,15 @@ private struct ArchiveSearchSheet: View {
     }
 
     private var resultsList: some View {
-        ForEach(results) { archive in
-            ArchiveSearchResultRow(archive: archive) {
-                onSelect(archive)
+        Group {
+            if results.isEmpty {
+                EmptyStateView(text: "暂时没找到这个摊，换个关键词试试。", icon: "magnifyingglass")
+            } else {
+                ForEach(results) { archive in
+                    ArchiveSearchResultRow(archive: archive) {
+                        onSelect(archive)
+                    }
+                }
             }
         }
     }

@@ -10,6 +10,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var store: ArchiveStore
     @State private var favoritesExpanded = true
+    @State private var toastMessage: String?
 
     private var favorites: [CityArchive] {
         store.archives.filter { store.favoriteIDs.contains($0.id) }
@@ -20,6 +21,7 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 16) {
                 profileHeader
                 contributionCard
+                nextStepCard
                 roleSwitch
                 if store.selectedRole == .stallOwner {
                     stallOwnerPanel
@@ -29,6 +31,7 @@ struct ProfileView: View {
             .padding(16)
         }
         .background(Color.tanPaper.ignoresSafeArea())
+        .toastOverlay(toastMessage)
         .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -98,6 +101,7 @@ struct ProfileView: View {
                 store.selectedRole
             }, set: { role in
                 store.switchRole(to: role)
+                showToast(role == .stallOwner ? "已切换到摊户端" : "已切换到游客端", binding: $toastMessage)
             })) {
                 ForEach(AppRole.allCases, id: \.self) { role in
                     Text(role.title).tag(role)
@@ -107,18 +111,32 @@ struct ProfileView: View {
         }
     }
 
+    private var nextStepCard: some View {
+        ProfileActionRow(
+            icon: store.selectedRole == .stallOwner ? "sparkles" : "map.fill",
+            title: store.selectedRole == .stallOwner ? "下一步：用 AI 建一个新档案" : "下一步：去地图上发现一个附近摊位",
+            subtitle: store.selectedRole == .stallOwner ? "补照片、补路线、补故事，先从一句口述开始。" : "点开地图上的摊位，看看故事、路线和消失预警。"
+        ) {
+            store.selectedTab = store.selectedRole == .stallOwner ? .build : .map
+        }
+    }
+
     private var stallOwnerPanel: some View {
         Surface {
             ProfileActionRow(
                 icon: "sparkles",
                 title: "摊户工作台",
-                subtitle: "AI 追问、生成档案，再吸收用户反馈补充信息。"
+                subtitle: "AI 建档、我的档案、收到的补档都从这里开始。"
             ) {
                 store.selectedTab = .build
             }
 
-            ForEach(store.currentUserArchives) { archive in
-                ArchiveRow(archive: archive)
+            if store.currentUserArchives.isEmpty {
+                EmptyStateView(text: "还没有建立档案，先记录一个熟悉的摊吧。", icon: "sparkles")
+            } else {
+                ForEach(store.currentUserArchives) { archive in
+                    ArchiveRow(archive: archive)
+                }
             }
         }
     }
@@ -154,7 +172,7 @@ struct ProfileView: View {
 
             if favoritesExpanded {
                 if favorites.isEmpty {
-                    EmptyStateView(text: "还没有收藏档案。")
+                    EmptyStateView(text: "还没有收藏的摊位，去地图上发现一个吧。", icon: "heart")
                 } else {
                     ForEach(favorites) { archive in
                         NavigationLink(value: archive.id) {

@@ -76,15 +76,15 @@ struct LoginView: View {
                         .foregroundStyle(Color.tanInk)
 
                     HStack(spacing: 12) {
-                        roleButton(.visitor, icon: "figure.walk", title: "我想逛摊", subtitle: "找小吃、老手艺和街角故事")
-                        roleButton(.stallOwner, icon: "storefront.fill", title: "我要建档", subtitle: "AI 帮我整理摊位档案")
+                        roleButton(.visitor, icon: "figure.walk", title: "我想逛摊", subtitle: "附近摊位 · 发现老手艺 · 消失预警")
+                        roleButton(.stallOwner, icon: "storefront.fill", title: "我要建档", subtitle: "AI 建档 · 我的档案 · 收到的补档")
                     }
                 }
 
                 Button {
                     store.login(as: selectedRole)
                 } label: {
-                    Text("进入摊档地图")
+                    Text(selectedRole == .visitor ? "进入摊档地图" : "进入摊户工作台")
                 }
                 .buttonStyle(PrimaryButtonStyle())
 
