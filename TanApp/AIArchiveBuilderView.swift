@@ -37,6 +37,7 @@ struct AIArchiveBuilderView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    buildSteps
                     ownerBanner
                     conversation
                     draftCard
@@ -61,6 +62,26 @@ struct AIArchiveBuilderView: View {
         }
     }
 
+    private var buildSteps: some View {
+        Surface {
+            Text("说几句摊位故事，AI 会帮你整理成档案。")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Color.tanInk)
+
+            HStack(spacing: 8) {
+                ArchiveBuildStep(number: "1", title: "口述", isHighlighted: true)
+                Rectangle()
+                    .fill(Color.tanLine)
+                    .frame(height: 2)
+                ArchiveBuildStep(number: "2", title: "整理", isHighlighted: isThinking)
+                Rectangle()
+                    .fill(Color.tanLine)
+                    .frame(height: 2)
+                ArchiveBuildStep(number: "3", title: "入库", isHighlighted: false)
+            }
+        }
+    }
+
     private var ownerBanner: some View {
         Surface {
             HStack(spacing: 12) {
@@ -69,24 +90,26 @@ struct AIArchiveBuilderView: View {
                     .foregroundStyle(.white)
                     .frame(width: 52, height: 52)
                     .background(Color.tanPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("摊户 AI Agent")
-                        .font(.system(size: 22, weight: .bold))
-                    Text("多轮提问、自动改写、吸收用户反馈补全档案")
+                    Text("摊户 AI 建档助手")
+                        .font(.system(size: 22, weight: .black))
+                    Text("慢慢说，AI 会追问、整理，再生成一张能入库的摊档名片。")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
+                        .lineSpacing(3)
                 }
                 Spacer()
                 Button {
                     speakLatestAIQuestion()
                 } label: {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.system(size: 18, weight: .bold))
+                    Label("读问题", systemImage: "speaker.wave.2.fill")
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color.tanPrimary)
-                        .frame(width: 40, height: 40)
-                        .background(Color.tanPaper)
-                        .clipShape(Circle())
+                        .padding(.horizontal, 11)
+                        .frame(height: 34)
+                        .background(Color.mutedOrange.opacity(0.6))
+                        .clipShape(Capsule())
                 }
             }
         }
@@ -95,26 +118,34 @@ struct AIArchiveBuilderView: View {
     private var conversation: some View {
         VStack(spacing: 10) {
             ForEach(messages) { message in
-                HStack {
+                HStack(alignment: .bottom, spacing: 8) {
                     if message.role == "摊户" {
                         Spacer(minLength: 40)
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(message.role)
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(message.role == "摊户" ? .white.opacity(0.78) : Color.tanInk.opacity(0.55))
                         Text(message.text)
-                            .font(.system(size: 14))
+                            .font(.system(size: 15))
+                            .foregroundStyle(message.role == "摊户" ? .white : Color.tanInk)
+                            .lineSpacing(3)
                     }
-                    .padding(12)
-                    .background(message.role == "摊户" ? Color.tanPrimary.opacity(0.12) : .white)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(14)
+                    .frame(maxWidth: 292, alignment: .leading)
+                    .background(message.role == "摊户" ? Color.tanPrimary : .white)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .shadow(color: Color.tanInk.opacity(0.05), radius: 8, x: 0, y: 5)
                     if message.role != "摊户" {
                         Button {
                             speechReader.speak(message.text, dialect: dialect)
                         } label: {
                             Image(systemName: "speaker.wave.2")
+                                .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(Color.tanPrimary)
+                                .frame(width: 32, height: 32)
+                                .background(.white)
+                                .clipShape(Circle())
                         }
                         Spacer(minLength: 40)
                     }
@@ -131,26 +162,48 @@ struct AIArchiveBuilderView: View {
                 }
                 .padding(12)
                 .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
             }
         }
     }
 
     private var draftCard: some View {
         Surface {
-            Text("自动生成名片")
-                .font(.system(size: 18, weight: .bold))
-            Text(draft.name)
-                .font(.system(size: 24, weight: .bold))
-                .foregroundStyle(Color.tanPrimary)
-            Text("\(draft.ownerName) · \(draft.category.title) · \(draft.yearsActive) 年")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
-            FlowTags(tags: draft.tags)
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                        .fill(Color.tanPrimary.opacity(0.14))
+                    Image(systemName: draft.category.icon)
+                        .font(.system(size: 25, weight: .bold))
+                        .foregroundStyle(Color.tanPrimary)
+                }
+                .frame(width: 58, height: 58)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("AI 生成档案")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(Color.tanPrimary)
+                    Text(draft.name)
+                        .font(.system(size: 24, weight: .black))
+                        .foregroundStyle(Color.tanInk)
+                }
+            }
+
             Text(draft.summary)
                 .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tanInk.opacity(0.68))
                 .lineSpacing(4)
+
+            FlowTags(tags: draft.tags)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    InfoChip(text: "\(draft.ownerName)")
+                    InfoChip(text: draft.category.title)
+                    InfoChip(text: "\(draft.yearsActive) 年")
+                    InfoChip(text: draft.priceOrService)
+                }
+            }
 
             Button {
                 if let editingArchive {
@@ -180,29 +233,42 @@ struct AIArchiveBuilderView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 23, weight: .bold))
+                        .font(.system(size: 19, weight: .bold))
                     Text(dialect.title)
-                        .font(.system(size: 17, weight: .black))
+                        .font(.system(size: 15, weight: .black))
                 }
                 .foregroundStyle(Color.tanPrimary)
-                .frame(width: 104, height: 46)
+                .frame(width: 96, height: 46)
                 .background(Color.tanPrimary.opacity(0.12))
                 .clipShape(Capsule())
             }
 
             TextField("回答 AI 的问题，或说“修改为...”", text: $input)
-                .font(.system(size: 18, weight: .semibold))
-                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 15, weight: .semibold))
+                .padding(.horizontal, 14)
+                .frame(height: 46)
+                .background(Color.tanPaper)
+                .clipShape(Capsule())
             Button {
                 send()
             } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.system(size: 30))
-                    .foregroundStyle(Color.tanPrimary)
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 17, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color.tanPrimary.opacity(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isThinking ? 0.4 : 1))
+                    .clipShape(Circle())
+                    .shadow(color: Color.tanPrimary.opacity(0.2), radius: 10, x: 0, y: 6)
             }
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isThinking)
         }
         .padding(12)
+        .background(.white)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.tanLine)
+                .frame(height: 1)
+        }
     }
 
     private func send() {
@@ -276,6 +342,44 @@ private struct BuilderMessage: Identifiable {
     let id = UUID()
     let role: String
     let text: String
+}
+
+private struct ArchiveBuildStep: View {
+    let number: String
+    let title: String
+    let isHighlighted: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(number)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(isHighlighted ? .white : Color.tanInk.opacity(0.64))
+                .frame(width: 30, height: 30)
+                .background(isHighlighted ? Color.tanPrimary : Color.tanPaper)
+                .clipShape(Circle())
+                .overlay {
+                    Circle().stroke(isHighlighted ? Color.tanPrimary.opacity(0.5) : Color.tanLine)
+                }
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(isHighlighted ? Color.tanPrimary : Color.tanInk.opacity(0.58))
+        }
+    }
+}
+
+private struct InfoChip: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Color.tanInk.opacity(0.72))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(Color.tanPaper)
+            .clipShape(Capsule())
+    }
 }
 
 private struct FlowTags: View {

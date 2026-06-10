@@ -148,12 +148,24 @@ struct ArchiveMapView: View {
                 Button {
                     showSearch = true
                 } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Color.tanPrimary)
-                        .clipShape(Circle())
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.tanPrimary)
+                        Text("搜索小吃、手艺、摊位")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.tanInk.opacity(0.72))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 46)
+                    .background(.white)
+                    .clipShape(Capsule())
+                    .overlay {
+                        Capsule()
+                            .stroke(Color.tanLine)
+                    }
+                    .shadow(color: Color.tanInk.opacity(0.1), radius: 14, x: 0, y: 8)
                 }
             }
 
@@ -167,9 +179,10 @@ struct ArchiveMapView: View {
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
-                        .frame(height: 44)
+                        .frame(height: 46)
                         .background(Color.tanInk)
                         .clipShape(Capsule())
+                        .shadow(color: Color.tanInk.opacity(0.18), radius: 12, x: 0, y: 8)
                 }
             }
         }
@@ -234,7 +247,7 @@ private struct QuickOpenStallButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 72)
             .background(archive.status == .open ? Color.tanInk : Color.tanPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
             .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 10)
         }
         .buttonStyle(.plain)
@@ -251,24 +264,31 @@ private struct ArchiveMapCard: View {
     let onClose: () -> Void
 
     var body: some View {
-        Surface {
+        VStack(alignment: .leading, spacing: 14) {
+            Capsule()
+                .fill(Color.black.opacity(0.16))
+                .frame(width: 38, height: 5)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 2)
+
             HStack(alignment: .top) {
                 ZStack {
-                    Circle()
-                        .fill(archive.status.tint.opacity(0.16))
+                    RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                        .fill(archive.status.tint.opacity(0.14))
                     Image(systemName: archive.category.icon)
                         .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(archive.status.tint)
                 }
-                .frame(width: 68, height: 68)
+                .frame(width: 66, height: 66)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("摊户名片")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color.tanPrimary)
                     Text(archive.name)
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 21, weight: .black))
                         .foregroundStyle(Color.tanInk)
+                        .lineLimit(1)
                     Text("\(archive.ownerName) · \(archive.yearsActive) 年 · \(archive.priceOrService)")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -280,16 +300,18 @@ private struct ArchiveMapCard: View {
                 Spacer()
                 NavigationLink(value: archive.id) {
                     Image(systemName: "chevron.right")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 34, height: 34)
-                        .background(Color.tanPaper)
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundStyle(Color.tanInk.opacity(0.7))
+                        .frame(width: 38, height: 38)
+                        .background(Color.tanPaper.opacity(0.92))
                         .clipShape(Circle())
                 }
             }
 
             Text(archive.summary)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 14))
+                .foregroundStyle(Color.tanInk.opacity(0.68))
+                .lineSpacing(3)
                 .lineLimit(3)
 
             VStack(alignment: .leading, spacing: 8) {
@@ -309,7 +331,7 @@ private struct ArchiveMapCard: View {
                             }
                             .padding(10)
                             .background(Color.tanPaper)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
                         }
                     }
                 }
@@ -319,7 +341,8 @@ private struct ArchiveMapCard: View {
                 Button(action: onHistory) {
                     Label("上次路线", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(Color.tanInk)
 
                 if canManage {
                     Button(action: onLive) {
@@ -336,6 +359,15 @@ private struct ArchiveMapCard: View {
             }
             .font(.system(size: 13, weight: .semibold))
         }
+        .padding(18)
+        .background(.ultraThinMaterial)
+        .background(Color.white.opacity(0.92))
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous)
+                .stroke(Color.white.opacity(0.8), lineWidth: 1)
+        }
+        .shadow(color: Color.tanInk.opacity(0.18), radius: 24, x: 0, y: 12)
     }
 }
 
@@ -359,7 +391,7 @@ private struct ArchiveSearchSheet: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 searchField
                 categoryFilters
                 resultsList
@@ -372,13 +404,19 @@ private struct ArchiveSearchSheet: View {
     private var searchField: some View {
         HStack {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.tanPrimary)
             TextField("搜索糖画、补鞋、蜀绣、豆瓣酱...", text: $query)
+                .font(.system(size: 15, weight: .semibold))
                 .textInputAutocapitalization(.never)
         }
-        .padding(12)
-        .background(Color.tanPaper)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 14)
+        .frame(height: 46)
+        .background(.white)
+        .clipShape(Capsule())
+        .overlay {
+            Capsule().stroke(Color.tanLine)
+        }
+        .shadow(color: Color.tanInk.opacity(0.06), radius: 10, x: 0, y: 6)
     }
 
     private var categoryFilters: some View {
@@ -394,6 +432,7 @@ private struct ArchiveSearchSheet: View {
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: category)
     }
 
     private var resultsList: some View {
@@ -430,8 +469,14 @@ private struct ArchiveSearchResultRow: View {
             }
             .padding(12)
             .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                    .stroke(Color.tanLine)
+            }
+            .shadow(color: Color.tanInk.opacity(0.05), radius: 10, x: 0, y: 6)
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -445,11 +490,16 @@ private struct CategoryFilterButton: View {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(isSelected ? .white : Color.tanInk)
-                .padding(.horizontal, 12)
-                .frame(height: 32)
-                .background(isSelected ? Color.tanPrimary : Color.white)
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .background(isSelected ? Color.tanPrimary : Color.tanPaper)
                 .clipShape(Capsule())
+                .overlay {
+                    Capsule().stroke(isSelected ? Color.tanPrimary.opacity(0.55) : Color.tanLine)
+                }
+                .shadow(color: isSelected ? Color.tanPrimary.opacity(0.15) : .clear, radius: 8, x: 0, y: 4)
         }
+        .buttonStyle(.plain)
     }
 }
 

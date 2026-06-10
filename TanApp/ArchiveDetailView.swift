@@ -91,16 +91,38 @@ struct ArchiveDetailView: View {
     }
 
     private var hero: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Rectangle()
-                .fill(Color.gray.opacity(0.18))
-                .frame(height: 220)
-                .overlay {
+        VStack(alignment: .leading, spacing: 14) {
+            ZStack {
+                LinearGradient(
+                    colors: [Color.tanPrimary.opacity(0.28), Color.heritageGreen.opacity(0.18), .white],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                VStack(spacing: 12) {
                     Image(systemName: latestArchive.category.icon)
-                        .font(.system(size: 44, weight: .bold))
+                        .font(.system(size: 48, weight: .bold))
                         .foregroundStyle(Color.tanPrimary)
+                        .frame(width: 96, height: 96)
+                        .background(.white.opacity(0.82))
+                        .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
+                        .shadow(color: Color.tanInk.opacity(0.08), radius: 14, x: 0, y: 8)
+                    Text(latestArchive.category.title)
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundStyle(Color.tanInk)
+                        .padding(.horizontal, 12)
+                        .frame(height: 32)
+                        .background(.white.opacity(0.78))
+                        .clipShape(Capsule())
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .frame(height: 220)
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous)
+                    .stroke(Color.white.opacity(0.75))
+            }
+            .shadow(color: Color.tanInk.opacity(0.08), radius: 16, x: 0, y: 9)
 
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -126,7 +148,7 @@ struct ArchiveDetailView: View {
             Text(latestArchive.summary)
                 .font(.system(size: 15))
                 .foregroundStyle(.secondary)
-                .lineSpacing(4)
+                .lineSpacing(6)
 
             Button {
                 store.navigateToArchiveOnMap(latestArchive)
@@ -143,15 +165,24 @@ struct ArchiveDetailView: View {
             Text("工序记录")
                 .font(.system(size: 18, weight: .bold))
             ForEach(Array(latestArchive.craftProcess.enumerated()), id: \.offset) { index, step in
-                HStack(spacing: 10) {
-                    Text("\(index + 1)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
-                        .background(Color.tanInk)
-                        .clipShape(Circle())
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(spacing: 4) {
+                        Text("\(index + 1)")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(Color.tanPrimary)
+                            .clipShape(Circle())
+                        if index < latestArchive.craftProcess.count - 1 {
+                            Rectangle()
+                                .fill(Color.tanLine)
+                                .frame(width: 2, height: 24)
+                        }
+                    }
                     Text(step)
-                        .font(.system(size: 14))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.tanInk.opacity(0.76))
+                        .padding(.top, 4)
                     Spacer()
                 }
             }
@@ -232,19 +263,27 @@ struct ArchiveDetailView: View {
                 }
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
-                ForEach(latestArchive.photos) { photo in
-                    VStack(alignment: .leading, spacing: 6) {
-                        UploadedPhotoPreview(imageData: photo.imageData, caption: photo.caption)
-                            .frame(height: 92)
-                        Button {
-                            store.likePhoto(photo, in: latestArchive)
-                        } label: {
-                            Label("\(photo.likes)", systemImage: store.hasLikedPhoto(photo) ? "hand.thumbsup.fill" : "hand.thumbsup")
-                                .font(.system(size: 12, weight: .semibold))
+            if latestArchive.photos.isEmpty {
+                EmptyStateView(text: "还没有街景照片，成为第一个补档的人。")
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
+                    ForEach(latestArchive.photos) { photo in
+                        VStack(alignment: .leading, spacing: 6) {
+                            UploadedPhotoPreview(imageData: photo.imageData, caption: photo.caption)
+                                .frame(height: 96)
+                            Button {
+                                store.likePhoto(photo, in: latestArchive)
+                            } label: {
+                                Label("\(photo.likes)", systemImage: store.hasLikedPhoto(photo) ? "hand.thumbsup.fill" : "hand.thumbsup")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .padding(.horizontal, 8)
+                                    .frame(height: 26)
+                                    .background(Color.tanPaper)
+                                    .clipShape(Capsule())
+                            }
+                            .foregroundStyle(Color.tanPrimary)
+                            .disabled(store.hasLikedPhoto(photo))
                         }
-                        .foregroundStyle(Color.tanPrimary)
-                        .disabled(store.hasLikedPhoto(photo))
                     }
                 }
             }
@@ -267,34 +306,50 @@ struct ArchiveDetailView: View {
                 .tint(.tanPrimary)
             }
 
-            ForEach(latestArchive.comments) { comment in
-                HStack(alignment: .top, spacing: 10) {
-                    Circle()
-                        .fill(Color.tanPrimary.opacity(0.16))
-                        .frame(width: 34, height: 34)
-                        .overlay {
-                            Text(String(comment.contributorName.prefix(1)))
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(Color.tanPrimary)
+            if latestArchive.comments.isEmpty {
+                EmptyStateView(text: "还没有街坊补档，来留下第一条线索。")
+            } else {
+                ForEach(latestArchive.comments) { comment in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                            .fill(Color.tanPrimary.opacity(0.16))
+                            .frame(width: 38, height: 38)
+                            .overlay {
+                                Text(String(comment.contributorName.prefix(1)))
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(Color.tanPrimary)
+                            }
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(comment.contributorName)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Color.tanInk)
+                            Text(comment.text)
+                                .font(.system(size: 14))
+                                .foregroundStyle(.secondary)
+                                .lineSpacing(3)
                         }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(comment.contributorName)
-                            .font(.system(size: 13, weight: .bold))
-                        Text(comment.text)
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            store.likeComment(comment, in: latestArchive)
+                        } label: {
+                            Label("\(comment.likes)", systemImage: store.hasLikedComment(comment) ? "hand.thumbsup.fill" : "hand.thumbsup")
+                                .padding(.horizontal, 9)
+                                .frame(height: 30)
+                                .background(Color.tanPaper)
+                                .clipShape(Capsule())
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.tanPrimary)
+                        .disabled(store.hasLikedComment(comment))
                     }
-                    Spacer()
-                    Button {
-                        store.likeComment(comment, in: latestArchive)
-                    } label: {
-                        Label("\(comment.likes)", systemImage: store.hasLikedComment(comment) ? "hand.thumbsup.fill" : "hand.thumbsup")
+                    .padding(12)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                            .stroke(Color.tanLine)
                     }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.tanPrimary)
-                    .disabled(store.hasLikedComment(comment))
                 }
-                .padding(.vertical, 8)
             }
         }
     }
@@ -347,7 +402,7 @@ private struct UploadedPhotoPreview: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.white.opacity(0.72))
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
     }
 }
 

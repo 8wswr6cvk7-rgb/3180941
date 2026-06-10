@@ -36,46 +36,57 @@ struct ProfileView: View {
     private var profileHeader: some View {
         HStack(spacing: 14) {
             Circle()
-                .fill(Color.gray.opacity(0.18))
-                .frame(width: 68, height: 68)
+                .fill(Color.tanPrimary.opacity(0.18))
+                .frame(width: 72, height: 72)
                 .overlay {
                     Image(systemName: store.selectedRole == .stallOwner ? "storefront.fill" : "person.fill")
-                        .font(.system(size: 28))
+                        .font(.system(size: 30, weight: .bold))
                         .foregroundStyle(Color.tanPrimary)
                 }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text(store.user.name)
-                    .font(.system(size: 24, weight: .bold))
-                Text(store.selectedRole == .stallOwner ? "摊户 · AI 建档与开摊管理" : "用户 · 拍照评论获得市景侠积分")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 25, weight: .black))
+                    .foregroundStyle(Color.tanInk)
+                Text(store.selectedRole == .stallOwner ? "摊户 · AI 建档管理" : "市景侠 · 社区补档者")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.tanInk.opacity(0.62))
+                Text(store.cloudState)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.tanPrimary)
             }
             Spacer()
         }
+        .padding(18)
+        .background {
+            LinearGradient(
+                colors: [.white, Color.tanPrimary.opacity(0.12)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous)
+                .stroke(Color.white.opacity(0.8))
+        }
+        .shadow(color: Color.tanInk.opacity(0.07), radius: 16, x: 0, y: 9)
     }
 
     private var contributionCard: some View {
         Surface {
-            HStack {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("市景侠积分")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Text("\(store.user.points)")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(Color.tanPrimary)
-                    Text("来自照片点赞、评论点赞与补档贡献")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(store.user.rank)
-                    .font(.system(size: 13, weight: .bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.tanPaper)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Text("市景侠积分")
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(Color.tanInk)
+
+            HStack(spacing: 10) {
+                ProfileStatCard(number: "\(store.user.points)", label: "积分")
+                ProfileStatCard(number: store.user.rank, label: "排名")
+                ProfileStatCard(number: "\(favorites.count)", label: "守护")
             }
+
+            Text("积分来自照片点赞、评论点赞与补档贡献。")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.tanInk.opacity(0.58))
         }
     }
 
@@ -98,25 +109,12 @@ struct ProfileView: View {
 
     private var stallOwnerPanel: some View {
         Surface {
-            HStack {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("摊户工作台")
-                        .font(.system(size: 20, weight: .bold))
-                    Text("AI agent 会多轮追问、生成档案、再根据用户反馈持续补充信息。")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    store.selectedTab = .build
-                } label: {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 48, height: 48)
-                        .background(Color.tanPrimary)
-                        .clipShape(Circle())
-                }
+            ProfileActionRow(
+                icon: "sparkles",
+                title: "摊户工作台",
+                subtitle: "AI 追问、生成档案，再吸收用户反馈补充信息。"
+            ) {
+                store.selectedTab = .build
             }
 
             ForEach(store.currentUserArchives) { archive in
@@ -134,7 +132,7 @@ struct ProfileView: View {
             } label: {
                 HStack {
                     Text("守护清单")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 20, weight: .black))
                     Text("\(favorites.count)")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Color.tanPrimary)
@@ -145,6 +143,14 @@ struct ProfileView: View {
                 .foregroundStyle(Color.tanInk)
             }
             .buttonStyle(.plain)
+            .padding(16)
+            .background(.white)
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                    .stroke(Color.tanLine)
+            }
+            .shadow(color: Color.tanInk.opacity(0.05), radius: 10, x: 0, y: 6)
 
             if favoritesExpanded {
                 if favorites.isEmpty {
@@ -164,5 +170,64 @@ struct ProfileView: View {
                 ArchiveDetailView(archive: archive)
             }
         }
+    }
+}
+
+private struct ProfileStatCard: View {
+    let number: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(number)
+                .font(.system(size: 20, weight: .black))
+                .foregroundStyle(Color.tanPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(label)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(Color.tanPaper)
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+    }
+}
+
+private struct ProfileActionRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 50, height: 50)
+                    .background(Color.tanPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(Color.tanInk)
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(14)
+            .background(Color.tanPaper)
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
