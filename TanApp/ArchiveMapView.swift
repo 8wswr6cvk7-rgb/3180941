@@ -18,6 +18,7 @@ struct ArchiveMapView: View {
     @State private var focusCoordinate: CLLocationCoordinate2D?
     @State private var pendingQuickOpenArchiveID: UUID?
     @State private var visibleRouteArchiveID: UUID?
+    @State private var isMapCardCollapsed = false
 
     private var selectedArchive: CityArchive? {
         guard let selectedArchiveID else {
@@ -46,6 +47,7 @@ struct ArchiveMapView: View {
                 focusCoordinate = archive.currentLocation.coordinate
                 liveLocationEnabled = false
                 visibleRouteArchiveID = nil
+                isMapCardCollapsed = false
             }
             .ignoresSafeArea()
 
@@ -70,6 +72,7 @@ struct ArchiveMapView: View {
                 if let selectedArchive {
                     ArchiveMapCard(
                         archive: selectedArchive,
+                        isCollapsed: $isMapCardCollapsed,
                         canManage: store.selectedRole == .stallOwner && selectedArchive.isUserCreated,
                         liveLocationEnabled: liveLocationEnabled,
                         routeVisible: visibleRouteArchiveID == selectedArchive.id,
@@ -96,6 +99,7 @@ struct ArchiveMapView: View {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 selectedArchiveID = nil
                                 visibleRouteArchiveID = nil
+                                isMapCardCollapsed = false
                             }
                         }
                     )
@@ -113,6 +117,7 @@ struct ArchiveMapView: View {
                 selectedArchiveID = archive.id
                 focusCoordinate = archive.currentLocation.coordinate
                 visibleRouteArchiveID = nil
+                isMapCardCollapsed = false
                 showSearch = false
             }
             .environmentObject(store)
@@ -201,6 +206,7 @@ struct ArchiveMapView: View {
             focusCoordinate = coordinate
             selectedArchiveID = archive.id
             pendingQuickOpenArchiveID = nil
+            isMapCardCollapsed = false
         } else {
             liveLocationEnabled = true
             locationManager.requestAndStartUpdating()
@@ -215,6 +221,7 @@ struct ArchiveMapView: View {
         focusCoordinate = archive.currentLocation.coordinate
         visibleRouteArchiveID = nil
         liveLocationEnabled = false
+        isMapCardCollapsed = false
         locationManager.stopUpdating()
     }
 }
@@ -257,6 +264,7 @@ private struct QuickOpenStallButton: View {
 
 private struct ArchiveMapCard: View {
     let archive: CityArchive
+    @Binding var isCollapsed: Bool
     let canManage: Bool
     let liveLocationEnabled: Bool
     let routeVisible: Bool
@@ -265,15 +273,55 @@ private struct ArchiveMapCard: View {
     let onOpen: () -> Void
     let onClose: () -> Void
     let onDismiss: () -> Void
+    @GestureState private var dragOffset: CGFloat = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: isCollapsed ? 8 : 14) {
             Capsule()
                 .fill(Color.black.opacity(0.16))
                 .frame(width: 38, height: 5)
                 .frame(maxWidth: .infinity)
-                .padding(.bottom, 2)
+                .padding(.bottom, isCollapsed ? 0 : 2)
 
+            if isCollapsed {
+                collapsedContent
+            } else {
+                expandedContent
+            }
+        }
+        .padding(isCollapsed ? 14 : 18)
+        .background(.ultraThinMaterial)
+        .background(Color.white.opacity(0.92))
+        .clipShape(RoundedRectangle(cornerRadius: isCollapsed ? TanRadius.medium : TanRadius.large, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: isCollapsed ? TanRadius.medium : TanRadius.large, style: .continuous)
+                .stroke(Color.white.opacity(0.8), lineWidth: 1)
+        }
+        .shadow(color: Color.tanInk.opacity(isCollapsed ? 0.12 : 0.18), radius: isCollapsed ? 14 : 24, x: 0, y: isCollapsed ? 8 : 12)
+        .offset(y: isCollapsed ? max(0, dragOffset * 0.25) : max(0, dragOffset))
+        .simultaneousGesture(cardDragGesture)
+        .animation(.spring(response: 0.3, dampingFraction: 0.86), value: isCollapsed)
+    }
+
+    private var collapsedContent: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                isCollapsed = false
+            }
+        } label: {
+            Text(archive.name)
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(Color.tanInk)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("展开 \(archive.name) 名片")
+    }
+
+    private var expandedContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 ZStack {
                     RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
@@ -375,15 +423,24 @@ private struct ArchiveMapCard: View {
             }
             .font(.system(size: 13, weight: .semibold))
         }
-        .padding(18)
-        .background(.ultraThinMaterial)
-        .background(Color.white.opacity(0.92))
-        .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous)
-                .stroke(Color.white.opacity(0.8), lineWidth: 1)
-        }
-        .shadow(color: Color.tanInk.opacity(0.18), radius: 24, x: 0, y: 12)
+    }
+
+    private var cardDragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .updating($dragOffset) { value, state, _ in
+                state = value.translation.height
+            }
+            .onEnded { value in
+                if value.translation.height > 46 {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                        isCollapsed = true
+                    }
+                } else if value.translation.height < -28 {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                        isCollapsed = false
+                    }
+                }
+            }
     }
 }
 
