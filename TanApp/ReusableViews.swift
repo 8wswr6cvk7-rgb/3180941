@@ -138,6 +138,8 @@ struct ChineseFriendlyTextField: UIViewRepresentable {
         textField.clearButtonMode = .whileEditing
         textField.autocorrectionType = .no
         textField.autocapitalizationType = .none
+        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textField.delegate = context.coordinator
         textField.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
         return textField
@@ -169,6 +171,10 @@ struct ChineseFriendlyTextField: UIViewRepresentable {
 }
 
 private final class ChinesePreferredUITextField: UITextField {
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: super.intrinsicContentSize.height)
+    }
+
     override var textInputMode: UITextInputMode? {
         UITextInputMode.activeInputModes.first { mode in
             guard let language = mode.primaryLanguage else {

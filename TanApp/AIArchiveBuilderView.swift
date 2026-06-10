@@ -34,21 +34,26 @@ struct AIArchiveBuilderView: View {
     )
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    buildSteps
-                    ownerBanner
-                    conversation
-                    draftCard
+        GeometryReader { proxy in
+            VStack(spacing: 0) {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        buildSteps
+                        ownerBanner
+                        conversation
+                        draftCard
+                    }
+                    .frame(width: max(proxy.size.width - 32, 0), alignment: .leading)
+                    .padding(16)
                 }
-                .padding(16)
-            }
-            .background(Color.tanPaper)
+                .background(Color.tanPaper)
 
-            composer
-                .background(.white)
+                composer
+                    .frame(width: proxy.size.width)
+                    .background(.white)
+            }
         }
+        .background(Color.tanPaper)
         .navigationTitle("AI 建档")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -67,6 +72,8 @@ struct AIArchiveBuilderView: View {
             Text("说几句摊位故事，AI 会帮你整理成档案。")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color.tanInk)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
                 ArchiveBuildStep(number: "1", title: "口述", isHighlighted: true)
@@ -79,6 +86,7 @@ struct AIArchiveBuilderView: View {
                     .frame(height: 2)
                 ArchiveBuildStep(number: "3", title: "入库", isHighlighted: false)
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -94,10 +102,13 @@ struct AIArchiveBuilderView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("摊户 AI 建档助手")
                         .font(.system(size: 22, weight: .black))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                     Text("慢慢说，AI 会追问、整理，再生成一张能入库的摊档名片。")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 Button {
@@ -112,6 +123,7 @@ struct AIArchiveBuilderView: View {
                         .clipShape(Capsule())
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -132,7 +144,8 @@ struct AIArchiveBuilderView: View {
                             .lineSpacing(3)
                     }
                     .padding(14)
-                    .frame(maxWidth: 292, alignment: .leading)
+                    .frame(maxWidth: 260, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .background(message.role == "摊户" ? Color.tanPrimary : .white)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .shadow(color: Color.tanInk.opacity(0.05), radius: 8, x: 0, y: 5)
@@ -150,6 +163,7 @@ struct AIArchiveBuilderView: View {
                         Spacer(minLength: 40)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: message.role == "摊户" ? .trailing : .leading)
             }
 
             if isThinking {
@@ -158,6 +172,8 @@ struct AIArchiveBuilderView: View {
                     Text("千问正在整理口述档案...")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                     Spacer()
                 }
                 .padding(12)
@@ -186,13 +202,18 @@ struct AIArchiveBuilderView: View {
                     Text(draft.name)
                         .font(.system(size: 24, weight: .black))
                         .foregroundStyle(Color.tanInk)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(draft.summary)
                 .font(.system(size: 14))
                 .foregroundStyle(Color.tanInk.opacity(0.68))
                 .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
 
             FlowTags(tags: draft.tags)
 
@@ -246,8 +267,10 @@ struct AIArchiveBuilderView: View {
             ChineseFriendlyTextField(placeholder: "回答 AI 的问题，或说“修改为...”", text: $input)
                 .padding(.horizontal, 14)
                 .frame(height: 46)
+                .frame(minWidth: 0, maxWidth: .infinity)
                 .background(Color.tanPaper)
                 .clipShape(Capsule())
+                .layoutPriority(1)
             Button {
                 send()
             } label: {
@@ -262,6 +285,7 @@ struct AIArchiveBuilderView: View {
             .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isThinking)
         }
         .padding(12)
+        .frame(maxWidth: .infinity)
         .background(.white)
         .overlay(alignment: .top) {
             Rectangle()
