@@ -226,6 +226,7 @@ struct ArchiveDetailView: View {
                     }
 
                     TextField("照片说明", text: $photoCaption)
+                        .chineseFriendlyInput()
                         .textFieldStyle(.roundedBorder)
 
                     HStack(spacing: 10) {
@@ -296,6 +297,7 @@ struct ArchiveDetailView: View {
                 .font(.system(size: 18, weight: .bold))
             HStack {
                 TextField("补充你看到的信息", text: $commentText)
+                    .chineseFriendlyInput()
                     .textFieldStyle(.roundedBorder)
                 Button("发送") {
                     guard !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

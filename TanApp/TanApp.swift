@@ -15,6 +15,7 @@ struct TanApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
+                .environment(\.locale, Locale(identifier: "zh_Hans_CN"))
         }
     }
 }

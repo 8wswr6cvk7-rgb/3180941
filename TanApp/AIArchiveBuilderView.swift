@@ -245,6 +245,7 @@ struct AIArchiveBuilderView: View {
 
             TextField("回答 AI 的问题，或说“修改为...”", text: $input)
                 .font(.system(size: 15, weight: .semibold))
+                .chineseFriendlyInput()
                 .padding(.horizontal, 14)
                 .frame(height: 46)
                 .background(Color.tanPaper)

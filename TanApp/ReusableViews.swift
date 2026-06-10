@@ -112,4 +112,11 @@ extension View {
     func fixedWhiteTabBar() -> some View {
         modifier(FixedTabBackground())
     }
+
+    func chineseFriendlyInput() -> some View {
+        self
+            .keyboardType(.default)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+    }
 }

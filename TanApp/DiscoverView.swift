@@ -89,6 +89,7 @@ struct DiscoverView: View {
                 .foregroundStyle(Color.tanPrimary)
             TextField("搜索非遗、老行当、小吃、地点", text: $query)
                 .font(.system(size: 15, weight: .semibold))
+                .chineseFriendlyInput()
         }
         .padding(.horizontal, 15)
         .frame(height: 46)

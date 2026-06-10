@@ -88,6 +88,11 @@ struct ArchiveMapView: View {
                         },
                         onClose: {
                             store.closeArchive(selectedArchive)
+                        },
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                selectedArchiveID = nil
+                            }
                         }
                     )
                     .padding(.horizontal, 16)
@@ -262,6 +267,7 @@ private struct ArchiveMapCard: View {
     let onLive: () -> Void
     let onOpen: () -> Void
     let onClose: () -> Void
+    let onDismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -298,13 +304,26 @@ private struct ArchiveMapCard: View {
                     }
                 }
                 Spacer()
-                NavigationLink(value: archive.id) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(Color.tanInk.opacity(0.7))
-                        .frame(width: 38, height: 38)
-                        .background(Color.tanPaper.opacity(0.92))
-                        .clipShape(Circle())
+                HStack(spacing: 8) {
+                    NavigationLink(value: archive.id) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(Color.tanInk.opacity(0.7))
+                            .frame(width: 38, height: 38)
+                            .background(Color.tanPaper.opacity(0.92))
+                            .clipShape(Circle())
+                    }
+
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundStyle(Color.tanInk.opacity(0.68))
+                            .frame(width: 38, height: 38)
+                            .background(Color.tanPaper.opacity(0.92))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("关闭名片")
                 }
             }
 
@@ -407,7 +426,7 @@ private struct ArchiveSearchSheet: View {
                 .foregroundStyle(Color.tanPrimary)
             TextField("搜索糖画、补鞋、蜀绣、豆瓣酱...", text: $query)
                 .font(.system(size: 15, weight: .semibold))
-                .textInputAutocapitalization(.never)
+                .chineseFriendlyInput()
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
