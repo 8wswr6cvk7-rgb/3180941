@@ -34,6 +34,7 @@ struct ArchiveDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 hero
                 story
+                activityRange
                 process
                 photoWall
                 comments
@@ -160,6 +161,52 @@ struct ArchiveDetailView: View {
         }
     }
 
+    private var activityRange: some View {
+        Surface {
+            HStack {
+                Label("常驻活动范围", systemImage: "map.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(Color.tanInk)
+                Spacer()
+                Button {
+                    store.navigateToArchiveOnMap(latestArchive)
+                } label: {
+                    Text("在地图看")
+                }
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.tanPrimary)
+            }
+
+            Text("这些地点来自档案里的常驻点、周末点和节庆流动点。")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+
+            if latestArchive.historicalStops.isEmpty {
+                EmptyStateView(text: "还没有活动范围记录，等待摊主开摊补充。")
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(latestArchive.historicalStops) { stop in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(stop.title)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(Color.tanInk)
+                                Text(stop.appearedAt)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .frame(minWidth: 118, alignment: .leading)
+                            .background(Color.tanPaper)
+                            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var process: some View {
         Surface {
             Text("工序记录")
@@ -225,9 +272,15 @@ struct ArchiveDetailView: View {
                             }
                     }
 
-                    TextField("照片说明", text: $photoCaption)
-                        .chineseFriendlyInput()
-                        .textFieldStyle(.roundedBorder)
+                    ChineseFriendlyTextField(placeholder: "照片说明", text: $photoCaption)
+                        .padding(.horizontal, 12)
+                        .frame(height: 38)
+                        .background(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous)
+                                .stroke(Color.tanLine)
+                        }
 
                     HStack(spacing: 10) {
                         Button {
@@ -296,9 +349,15 @@ struct ArchiveDetailView: View {
             Text("评论与补档")
                 .font(.system(size: 18, weight: .bold))
             HStack {
-                TextField("补充你看到的信息", text: $commentText)
-                    .chineseFriendlyInput()
-                    .textFieldStyle(.roundedBorder)
+                ChineseFriendlyTextField(placeholder: "补充你看到的信息", text: $commentText)
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous)
+                            .stroke(Color.tanLine)
+                    }
                 Button("发送") {
                     guard !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
                     store.addComment(to: latestArchive, text: commentText)

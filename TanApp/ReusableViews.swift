@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ArchiveRow: View {
     let archive: CityArchive
@@ -118,5 +119,62 @@ extension View {
             .keyboardType(.default)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+    }
+}
+
+struct ChineseFriendlyTextField: UIViewRepresentable {
+    let placeholder: String
+    @Binding var text: String
+    var font: UIFont = .systemFont(ofSize: 15, weight: .semibold)
+
+    func makeUIView(context: Context) -> UITextField {
+        let textField = ChinesePreferredUITextField()
+        textField.placeholder = placeholder
+        textField.font = font
+        textField.textColor = UIColor(Color.tanInk)
+        textField.tintColor = UIColor(Color.tanPrimary)
+        textField.borderStyle = .none
+        textField.backgroundColor = .clear
+        textField.clearButtonMode = .whileEditing
+        textField.autocorrectionType = .no
+        textField.autocapitalizationType = .none
+        textField.delegate = context.coordinator
+        textField.addTarget(context.coordinator, action: #selector(Coordinator.textChanged(_:)), for: .editingChanged)
+        return textField
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        if uiView.text != text {
+            uiView.text = text
+        }
+        uiView.placeholder = placeholder
+        uiView.font = font
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        @Binding var text: String
+
+        init(text: Binding<String>) {
+            _text = text
+        }
+
+        @objc func textChanged(_ sender: UITextField) {
+            text = sender.text ?? ""
+        }
+    }
+}
+
+private final class ChinesePreferredUITextField: UITextField {
+    override var textInputMode: UITextInputMode? {
+        UITextInputMode.activeInputModes.first { mode in
+            guard let language = mode.primaryLanguage else {
+                return false
+            }
+            return language == "zh-Hans" || language.hasPrefix("zh")
+        } ?? super.textInputMode
     }
 }

@@ -87,9 +87,7 @@ struct DiscoverView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Color.tanPrimary)
-            TextField("搜索非遗、老行当、小吃、地点", text: $query)
-                .font(.system(size: 15, weight: .semibold))
-                .chineseFriendlyInput()
+            ChineseFriendlyTextField(placeholder: "搜索非遗、老行当、小吃、地点", text: $query)
         }
         .padding(.horizontal, 15)
         .frame(height: 46)

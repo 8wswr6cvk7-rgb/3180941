@@ -16,8 +16,8 @@ struct ArchiveMapView: View {
     @State private var showSearch = false
     @State private var liveLocationEnabled = false
     @State private var focusCoordinate: CLLocationCoordinate2D?
-    @State private var showLocationPrompt = false
     @State private var pendingQuickOpenArchiveID: UUID?
+    @State private var visibleRouteArchiveID: UUID?
 
     private var selectedArchive: CityArchive? {
         guard let selectedArchiveID else {
@@ -38,12 +38,14 @@ struct ArchiveMapView: View {
             ArchiveMapRepresentable(
                 archives: store.archives,
                 selectedID: selectedArchiveID,
+                routeArchiveID: visibleRouteArchiveID,
                 focusCoordinate: focusCoordinate,
                 showsUserLocation: liveLocationEnabled
             ) { archive in
                 selectedArchiveID = archive.id
                 focusCoordinate = archive.currentLocation.coordinate
                 liveLocationEnabled = false
+                visibleRouteArchiveID = nil
             }
             .ignoresSafeArea()
 
@@ -57,7 +59,7 @@ struct ArchiveMapView: View {
                             store.closeArchive(quickOpenArchive)
                         } else {
                             pendingQuickOpenArchiveID = quickOpenArchive.id
-                            showLocationPrompt = true
+                            openPendingArchiveWithLocation()
                         }
                     }
                     .padding(.horizontal, 34)
@@ -70,7 +72,9 @@ struct ArchiveMapView: View {
                         archive: selectedArchive,
                         canManage: store.selectedRole == .stallOwner && selectedArchive.isUserCreated,
                         liveLocationEnabled: liveLocationEnabled,
+                        routeVisible: visibleRouteArchiveID == selectedArchive.id,
                         onHistory: {
+                            visibleRouteArchiveID = selectedArchive.id
                             focusCoordinate = selectedArchive.currentLocation.coordinate
                         },
                         onLive: {
@@ -82,9 +86,8 @@ struct ArchiveMapView: View {
                             }
                         },
                         onOpen: {
-                            let coordinate = locationManager.currentCoordinate ?? selectedArchive.currentLocation.coordinate
-                            store.openArchive(selectedArchive, at: coordinate)
-                            focusCoordinate = coordinate
+                            pendingQuickOpenArchiveID = selectedArchive.id
+                            openPendingArchiveWithLocation()
                         },
                         onClose: {
                             store.closeArchive(selectedArchive)
@@ -92,6 +95,7 @@ struct ArchiveMapView: View {
                         onDismiss: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 selectedArchiveID = nil
+                                visibleRouteArchiveID = nil
                             }
                         }
                     )
@@ -108,6 +112,7 @@ struct ArchiveMapView: View {
             ArchiveSearchSheet { archive in
                 selectedArchiveID = archive.id
                 focusCoordinate = archive.currentLocation.coordinate
+                visibleRouteArchiveID = nil
                 showSearch = false
             }
             .environmentObject(store)
@@ -117,16 +122,6 @@ struct ArchiveMapView: View {
             if let archive = store.archive(with: id) {
                 ArchiveDetailView(archive: archive)
             }
-        }
-        .alert("需要获取位置信息", isPresented: $showLocationPrompt) {
-            Button("取消", role: .cancel) {
-                pendingQuickOpenArchiveID = nil
-            }
-            Button("允许并出摊") {
-                openPendingArchiveWithLocation()
-            }
-        } message: {
-            Text("一键出摊会使用当前位置，把摊位实时显示在地图上，并记录到上次出摊路线。")
         }
         .onReceive(locationManager.$currentCoordinate) { coordinate in
             guard let coordinate else { return }
@@ -218,6 +213,7 @@ struct ArchiveMapView: View {
         }
         selectedArchiveID = archive.id
         focusCoordinate = archive.currentLocation.coordinate
+        visibleRouteArchiveID = nil
         liveLocationEnabled = false
         locationManager.stopUpdating()
     }
@@ -263,6 +259,7 @@ private struct ArchiveMapCard: View {
     let archive: CityArchive
     let canManage: Bool
     let liveLocationEnabled: Bool
+    let routeVisible: Bool
     let onHistory: () -> Void
     let onLive: () -> Void
     let onOpen: () -> Void
@@ -334,7 +331,7 @@ private struct ArchiveMapCard: View {
                 .lineLimit(3)
 
             VStack(alignment: .leading, spacing: 8) {
-                Label("常驻区域与上次出摊路线", systemImage: "map.fill")
+                Label(routeVisible ? "活动范围与上次路线" : "活动范围", systemImage: "map.fill")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Color.tanInk)
 
@@ -358,7 +355,7 @@ private struct ArchiveMapCard: View {
 
             HStack(spacing: 10) {
                 Button(action: onHistory) {
-                    Label("上次路线", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    Label(routeVisible ? "路线已显示" : "上次路线", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(Color.tanInk)
@@ -424,9 +421,7 @@ private struct ArchiveSearchSheet: View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Color.tanPrimary)
-            TextField("搜索糖画、补鞋、蜀绣、豆瓣酱...", text: $query)
-                .font(.system(size: 15, weight: .semibold))
-                .chineseFriendlyInput()
+            ChineseFriendlyTextField(placeholder: "搜索糖画、补鞋、蜀绣、豆瓣酱...", text: $query)
         }
         .padding(.horizontal, 14)
         .frame(height: 46)
@@ -525,6 +520,7 @@ private struct CategoryFilterButton: View {
 private struct ArchiveMapRepresentable: UIViewRepresentable {
     let archives: [CityArchive]
     let selectedID: UUID?
+    let routeArchiveID: UUID?
     let focusCoordinate: CLLocationCoordinate2D?
     let showsUserLocation: Bool
     let onSelect: (CityArchive) -> Void
@@ -563,7 +559,7 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
             if let residentCenter = coordinates.residentCenter ?? Optional(selected.currentLocation.coordinate) {
                 mapView.addOverlay(MKCircle(center: residentCenter, radius: 420))
             }
-            if coordinates.count > 1 {
+            if coordinates.count > 1 && routeArchiveID == selected.id {
                 mapView.addOverlay(MKPolyline(coordinates: coordinates, count: coordinates.count))
             }
         } else if !mapView.overlays.isEmpty {

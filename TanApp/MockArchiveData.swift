@@ -143,10 +143,39 @@ enum MockArchiveData {
 
     private static func stops(_ a: String, _ b: String, _ c: String) -> [RouteStop] {
         [
-            RouteStop(title: a, appearedAt: "常驻点", coordinate: CoordinatePoint(latitude: 30.6586, longitude: 104.0648)),
-            RouteStop(title: b, appearedAt: "周末下午", coordinate: CoordinatePoint(latitude: 30.6621, longitude: 104.0583)),
-            RouteStop(title: c, appearedAt: "节庆流动", coordinate: CoordinatePoint(latitude: 30.6534, longitude: 104.0732))
+            RouteStop(title: a, appearedAt: "常驻点", coordinate: coordinate(for: a)),
+            RouteStop(title: b, appearedAt: "周末下午", coordinate: coordinate(for: b)),
+            RouteStop(title: c, appearedAt: "节庆流动", coordinate: coordinate(for: c))
         ]
+    }
+
+    private static func coordinate(for place: String) -> CoordinatePoint {
+        let coordinates: [String: CoordinatePoint] = [
+            "东华门街口": CoordinatePoint(latitude: 30.6609, longitude: 104.0672),
+            "人民公园北门": CoordinatePoint(latitude: 30.6574, longitude: 104.0571),
+            "文殊院巷口": CoordinatePoint(latitude: 30.6681, longitude: 104.0687),
+            "文殊院外": CoordinatePoint(latitude: 30.6662, longitude: 104.0605),
+            "草市街口": CoordinatePoint(latitude: 30.6691, longitude: 104.0696),
+            "骡马市地铁口": CoordinatePoint(latitude: 30.6656, longitude: 104.0625),
+            "青羊宫门口": CoordinatePoint(latitude: 30.6659, longitude: 104.0504),
+            "文化公园": CoordinatePoint(latitude: 30.6644, longitude: 104.0469),
+            "琴台路": CoordinatePoint(latitude: 30.6627, longitude: 104.0486),
+            "镋钯街": CoordinatePoint(latitude: 30.6528, longitude: 104.0752),
+            "太古里侧巷": CoordinatePoint(latitude: 30.6537, longitude: 104.0794),
+            "合江亭": CoordinatePoint(latitude: 30.6509, longitude: 104.0791),
+            "红星路小区口": CoordinatePoint(latitude: 30.6503, longitude: 104.0642),
+            "春熙路背街": CoordinatePoint(latitude: 30.6552, longitude: 104.0764),
+            "东大街菜市": CoordinatePoint(latitude: 30.6492, longitude: 104.0736),
+            "曹家巷": CoordinatePoint(latitude: 30.6711, longitude: 104.0666),
+            "府青路": CoordinatePoint(latitude: 30.6863, longitude: 104.0927),
+            "猛追湾": CoordinatePoint(latitude: 30.6668, longitude: 104.0884),
+            "宽窄巷子口": CoordinatePoint(latitude: 30.6638, longitude: 104.0554),
+            "奎星楼街": CoordinatePoint(latitude: 30.6648, longitude: 104.0531),
+            "小通巷": CoordinatePoint(latitude: 30.6666, longitude: 104.0551),
+            "望平街": CoordinatePoint(latitude: 30.6589, longitude: 104.0880),
+            "东门大桥": CoordinatePoint(latitude: 30.6534, longitude: 104.0837)
+        ]
+        return coordinates[place] ?? chengduCenter
     }
 
     private static func photos(_ first: String, _ second: String) -> [PhotoEntry] {
