@@ -9,11 +9,13 @@ import SwiftUI
 import UIKit
 
 extension Color {
-    static let tanPrimary = Color(hex: 0xFF6B35)
-    static let tanInk = Color(hex: 0x2D2D2D)
-    static let tanPaper = Color(hex: 0xF7F3EA)
-    static let tanLine = Color.black.opacity(0.08)
-    static let heritageGreen = Color(hex: 0x2F7D59)
+    static let tanPrimary = Color(hex: 0xF26A2E)
+    static let tanInk = Color(hex: 0x33251E)
+    static let tanPaper = Color(hex: 0xF7F1E6)
+    static let tanLine = Color(hex: 0xE9DECE)
+    static let heritageGreen = Color(hex: 0x6F9D72)
+    static let warningRed = Color(hex: 0xC95B45)
+    static let mutedOrange = Color(hex: 0xFFE3CF)
     static let craftBlue = Color(hex: 0x355C7D)
 
     init(hex: UInt, alpha: Double = 1) {
@@ -25,6 +27,13 @@ extension Color {
             opacity: alpha
         )
     }
+}
+
+enum TanRadius {
+    static let small: CGFloat = 10
+    static let medium: CGFloat = 16
+    static let large: CGFloat = 24
+    static let xlarge: CGFloat = 28
 }
 
 extension ArchiveStatus {
@@ -42,22 +51,33 @@ extension ArchiveStatus {
     var tint: Color {
         switch self {
         case .open:
-            return .green
+            return .heritageGreen
         case .closed:
-            return .orange
+            return Color(hex: 0x8F877B)
         case .atRisk:
-            return .gray
+            return .warningRed
         }
     }
 
     var mapUIColor: UIColor {
         switch self {
         case .open:
-            return .systemGreen
+            return UIColor(Color.heritageGreen)
         case .closed:
-            return .systemOrange
+            return UIColor(Color(hex: 0x8F877B))
         case .atRisk:
-            return .systemGray
+            return UIColor(Color.warningRed)
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .open:
+            return "checkmark.circle.fill"
+        case .closed:
+            return "moon.zzz.fill"
+        case .atRisk:
+            return "exclamationmark.triangle.fill"
         }
     }
 }
@@ -102,13 +122,14 @@ struct StatusBadge: View {
     let status: ArchiveStatus
 
     var body: some View {
-        Text(status.title)
-            .font(.system(size: 12, weight: .semibold))
+        Label(status.title, systemImage: status.icon)
+            .font(.system(size: 12, weight: .bold))
             .foregroundStyle(status.tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(status.tint.opacity(0.14))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .labelStyle(.titleAndIcon)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(status.tint.opacity(0.13))
+            .clipShape(Capsule())
     }
 }
 
@@ -120,14 +141,15 @@ struct TagPill: View {
         Text(text)
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(isSelected ? .white : Color.tanInk)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(isSelected ? Color.tanPrimary : Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.tanPrimary : Color.tanPaper)
+            .clipShape(Capsule())
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.tanLine)
+                Capsule()
+                    .stroke(isSelected ? Color.tanPrimary.opacity(0.5) : Color.tanLine)
             }
+            .shadow(color: isSelected ? Color.tanPrimary.opacity(0.16) : .clear, radius: 8, x: 0, y: 4)
     }
 }
 
@@ -138,13 +160,14 @@ struct Surface<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             content
         }
-        .padding(14)
+        .padding(16)
         .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
                 .stroke(Color.tanLine)
         }
+        .shadow(color: Color.tanInk.opacity(0.07), radius: 14, x: 0, y: 8)
     }
 }
 
@@ -154,8 +177,12 @@ struct PrimaryButtonStyle: ButtonStyle {
             .font(.system(size: 16, weight: .bold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .frame(minHeight: 52)
+            .padding(.horizontal, 18)
             .background(Color.tanPrimary.opacity(configuration.isPressed ? 0.78 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(Capsule())
+            .shadow(color: Color.tanPrimary.opacity(configuration.isPressed ? 0.08 : 0.22), radius: 14, x: 0, y: 8)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeInOut(duration: 0.14), value: configuration.isPressed)
     }
 }

@@ -11,35 +11,52 @@ struct ArchiveRow: View {
     let archive: CityArchive
 
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(archive.status.tint.opacity(0.18))
-                Image(systemName: archive.category.icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(archive.status.tint)
-            }
-            .frame(width: 54, height: 54)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                        .fill(archive.status.tint.opacity(0.13))
+                    Image(systemName: archive.category.icon)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(archive.status.tint)
+                }
+                .frame(width: 58, height: 58)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(archive.name)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(Color.tanInk)
-                Text("\(archive.category.title) · \(archive.yearsActive) 年 · \(archive.priceOrService)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(archive.name)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color.tanInk)
+                    Text("\(archive.ownerName) · \(archive.category.title)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+                StatusBadge(status: archive.status)
             }
 
-            Spacer()
-            StatusBadge(status: archive.status)
+            Text(archive.summary)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+                .lineLimit(2)
+
+            HStack(spacing: 8) {
+                Label("\(archive.yearsActive) 年", systemImage: "clock.fill")
+                Text(archive.priceOrService)
+                Spacer()
+            }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(Color.tanInk.opacity(0.72))
         }
-        .padding(12)
+        .padding(14)
         .background(.white)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.tanLine)
         }
+        .shadow(color: Color.tanInk.opacity(0.06), radius: 12, x: 0, y: 7)
     }
 }
 
@@ -56,7 +73,7 @@ struct PhotoPlaceholder: View {
                     .lineLimit(2)
                     .padding(8)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
     }
 }
 
@@ -65,9 +82,19 @@ struct EmptyStateView: View {
 
     var body: some View {
         Surface {
-            Text(text)
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+            VStack(spacing: 10) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(Color.heritageGreen)
+                    .frame(width: 48, height: 48)
+                    .background(Color.heritageGreen.opacity(0.12))
+                    .clipShape(Circle())
+                Text(text)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.tanInk.opacity(0.72))
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
         }
     }
 }
