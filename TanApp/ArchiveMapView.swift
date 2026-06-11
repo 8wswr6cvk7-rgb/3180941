@@ -21,12 +21,20 @@ struct ArchiveMapView: View {
     @State private var isMapCardCollapsed = false
     @State private var showMapHint = true
     @State private var toastMessage: String?
+    @State private var navigationArchiveID: UUID?
+    @State private var hasCenteredOnUser = false
+    @State private var archiveToEdit: CityArchive?
+    @State private var showXilian = false
+
+    private var displayedArchives: [CityArchive] {
+        store.selectedRole == .stallOwner ? store.currentUserArchives : store.archives
+    }
 
     private var selectedArchive: CityArchive? {
         guard let selectedArchiveID else {
             return nil
         }
-        return store.archive(with: selectedArchiveID)
+        return displayedArchives.first(where: { $0.id == selectedArchiveID })
     }
 
     private var quickOpenArchive: CityArchive? {
@@ -39,17 +47,29 @@ struct ArchiveMapView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ArchiveMapRepresentable(
-                archives: store.archives,
+                archives: displayedArchives,
                 selectedID: selectedArchiveID,
                 routeArchiveID: visibleRouteArchiveID,
+                navigationArchiveID: navigationArchiveID,
+                userCoordinate: locationManager.currentCoordinate,
                 focusCoordinate: focusCoordinate,
                 showsUserLocation: liveLocationEnabled
             ) { archive in
+                if visibleRouteArchiveID == archive.id && isMapCardCollapsed {
+                    return
+                }
                 selectedArchiveID = archive.id
                 focusCoordinate = archive.currentLocation.coordinate
                 liveLocationEnabled = false
                 visibleRouteArchiveID = nil
+                navigationArchiveID = nil
                 isMapCardCollapsed = false
+            } onRouteResult: { routeKind, succeeded in
+                guard routeKind == .history else { return }
+                showToast(
+                    succeeded ? "上次路线已按真实道路显示" : "Apple 地图暂时无法规划这段历史路线",
+                    binding: $toastMessage
+                )
             }
             .ignoresSafeArea()
 
@@ -65,6 +85,19 @@ struct ArchiveMapView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
                 Spacer()
+
+                if store.selectedRole == .visitor {
+                    HStack {
+                        Spacer()
+                        XilianFloatingButton(
+                            state: selectedArchive?.status == .atRisk ? .worried : .idle
+                        ) {
+                            showXilian = true
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .transition(.scale.combined(with: .opacity))
+                }
 
                 if store.selectedRole == .stallOwner, let quickOpenArchive {
                     QuickOpenStallButton(archive: quickOpenArchive) {
@@ -89,11 +122,32 @@ struct ArchiveMapView: View {
                         liveLocationEnabled: liveLocationEnabled,
                         routeVisible: visibleRouteArchiveID == selectedArchive.id,
                         onHistory: {
+                            navigationArchiveID = nil
                             visibleRouteArchiveID = selectedArchive.id
-                            focusCoordinate = selectedArchive.currentLocation.coordinate
+                            focusCoordinate = nil
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                                isMapCardCollapsed = true
+                            }
+                            showToast("正在沿实际道路还原上次路线", binding: $toastMessage)
+                        },
+                        onNavigate: {
+                            visibleRouteArchiveID = nil
+                            navigationArchiveID = selectedArchive.id
+                            liveLocationEnabled = true
+                            locationManager.requestAndStartUpdating()
+                            showToast("正在使用 Apple 地图规划步行路线", binding: $toastMessage)
                         },
                         onVisited: {
                             showToast("感谢补档，已记录你的到访", binding: $toastMessage)
+                        },
+                        onEdit: {
+                            archiveToEdit = selectedArchive
+                        },
+                        onPrevious: {
+                            selectAdjacentArchive(offset: -1)
+                        },
+                        onNext: {
+                            selectAdjacentArchive(offset: 1)
                         },
                         onLive: {
                             liveLocationEnabled.toggle()
@@ -112,10 +166,8 @@ struct ArchiveMapView: View {
                             showToast("已收摊，街坊还能看到历史档案", binding: $toastMessage)
                         },
                         onDismiss: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedArchiveID = nil
-                                visibleRouteArchiveID = nil
-                                isMapCardCollapsed = false
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                                isMapCardCollapsed = true
                             }
                         }
                     )
@@ -140,6 +192,27 @@ struct ArchiveMapView: View {
             .environmentObject(store)
             .presentationDetents([.medium, .large])
         }
+        .sheet(item: $archiveToEdit) { archive in
+            NavigationStack {
+                AIArchiveBuilderView(editingArchive: archive)
+                    .environmentObject(store)
+            }
+        }
+        .sheet(isPresented: $showXilian) {
+            XilianChatView(
+                selectedArchive: selectedArchive,
+                nearbyArchives: displayedArchives,
+                onOpenArchive: { archive in
+                    selectedArchiveID = archive.id
+                    focusCoordinate = archive.currentLocation.coordinate
+                    visibleRouteArchiveID = nil
+                    navigationArchiveID = nil
+                    isMapCardCollapsed = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .navigationDestination(for: UUID.self) { id in
             if let archive = store.archive(with: id) {
                 ArchiveDetailView(archive: archive)
@@ -147,7 +220,10 @@ struct ArchiveMapView: View {
         }
         .onReceive(locationManager.$currentCoordinate) { coordinate in
             guard let coordinate else { return }
-            focusCoordinate = coordinate
+            if !hasCenteredOnUser && selectedArchiveID == nil {
+                focusCoordinate = coordinate
+                hasCenteredOnUser = true
+            }
             if let id = pendingQuickOpenArchiveID, let archive = store.archive(with: id) {
                 store.openArchive(archive, at: coordinate)
                 selectedArchiveID = archive.id
@@ -160,6 +236,8 @@ struct ArchiveMapView: View {
         }
         .onAppear {
             focusMapIfNeeded(store.mapFocusRequest)
+            liveLocationEnabled = true
+            locationManager.requestAndStartUpdating()
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -169,6 +247,18 @@ struct ArchiveMapView: View {
         }
         .onChange(of: store.mapFocusRequest) { _, request in
             focusMapIfNeeded(request)
+        }
+        .onChange(of: store.selectedRole) { _, role in
+            selectedArchiveID = nil
+            visibleRouteArchiveID = nil
+            navigationArchiveID = nil
+            isMapCardCollapsed = false
+            store.selectedTab = .map
+            if role == .visitor {
+                liveLocationEnabled = true
+                hasCenteredOnUser = false
+                locationManager.requestAndStartUpdating()
+            }
         }
     }
 
@@ -203,9 +293,13 @@ struct ArchiveMapView: View {
 
             if store.selectedRole == .stallOwner {
                 Button {
-                    store.selectedTab = .build
+                    if let archive = store.currentUserArchives.first {
+                        archiveToEdit = archive
+                    } else {
+                        store.selectedTab = .build
+                    }
                 } label: {
-                    Label("AI 建档", systemImage: "sparkles")
+                    Label(store.currentUserArchives.isEmpty ? "AI 建档" : "修改名片", systemImage: store.currentUserArchives.isEmpty ? "sparkles" : "pencil")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
@@ -246,9 +340,27 @@ struct ArchiveMapView: View {
         selectedArchiveID = archive.id
         focusCoordinate = archive.currentLocation.coordinate
         visibleRouteArchiveID = nil
+        navigationArchiveID = nil
         liveLocationEnabled = false
         isMapCardCollapsed = false
         locationManager.stopUpdating()
+    }
+
+    private func selectAdjacentArchive(offset: Int) {
+        guard !displayedArchives.isEmpty,
+              let selectedArchiveID,
+              let currentIndex = displayedArchives.firstIndex(where: { $0.id == selectedArchiveID }) else {
+            return
+        }
+        let nextIndex = (currentIndex + offset + displayedArchives.count) % displayedArchives.count
+        let archive = displayedArchives[nextIndex]
+        withAnimation(.easeInOut(duration: 0.2)) {
+            self.selectedArchiveID = archive.id
+            focusCoordinate = archive.currentLocation.coordinate
+            visibleRouteArchiveID = nil
+            navigationArchiveID = nil
+            isMapCardCollapsed = false
+        }
     }
 }
 
@@ -332,7 +444,11 @@ private struct ArchiveMapCard: View {
     let liveLocationEnabled: Bool
     let routeVisible: Bool
     let onHistory: () -> Void
+    let onNavigate: () -> Void
     let onVisited: () -> Void
+    let onEdit: () -> Void
+    let onPrevious: () -> Void
+    let onNext: () -> Void
     let onLive: () -> Void
     let onOpen: () -> Void
     let onClose: () -> Void
@@ -364,6 +480,7 @@ private struct ArchiveMapCard: View {
         .shadow(color: Color.tanInk.opacity(isCollapsed ? 0.12 : 0.18), radius: isCollapsed ? 14 : 24, x: 0, y: isCollapsed ? 8 : 12)
         .offset(y: isCollapsed ? max(0, dragOffset * 0.25) : max(0, dragOffset))
         .simultaneousGesture(cardDragGesture)
+        .simultaneousGesture(cardPagingGesture)
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: isCollapsed)
     }
 
@@ -387,14 +504,7 @@ private struct ArchiveMapCard: View {
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
-                        .fill(archive.status.tint.opacity(0.14))
-                    Image(systemName: archive.category.icon)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(archive.status.tint)
-                }
-                .frame(width: 66, height: 66)
+                ArchiveAvatarView(archive: archive)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("摊户名片")
@@ -450,13 +560,29 @@ private struct ArchiveMapCard: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.tanPrimary)
 
-                Button(action: onVisited) {
-                    Label("我去过", systemImage: "figure.walk.arrival")
-                        .frame(maxWidth: .infinity)
+                if canManage {
+                    Button(action: onEdit) {
+                        Label("修改名片", systemImage: "pencil")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    Button(action: onVisited) {
+                        Label("打卡", systemImage: "mappin.and.ellipse")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
             }
             .font(.system(size: 14, weight: .bold))
+
+            Button(action: onNavigate) {
+                Label("Apple 地图步行导航", systemImage: "figure.walk.motion")
+                    .font(.system(size: 14, weight: .black))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Color.heritageGreen)
 
             VStack(alignment: .leading, spacing: 8) {
                 Label(routeVisible ? "活动范围与上次路线" : "活动范围", systemImage: "map.fill")
@@ -519,6 +645,22 @@ private struct ArchiveMapCard: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
                         isCollapsed = false
                     }
+                }
+            }
+    }
+
+    private var cardPagingGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                guard !isCollapsed,
+                      abs(value.translation.width) > abs(value.translation.height) * 1.35,
+                      abs(value.translation.width) > 72 else {
+                    return
+                }
+                if value.translation.width < 0 {
+                    onNext()
+                } else {
+                    onPrevious()
                 }
             }
     }
@@ -687,12 +829,20 @@ private struct CategoryFilterButton: View {
 }
 
 private struct ArchiveMapRepresentable: UIViewRepresentable {
+    enum RouteKind {
+        case history
+        case navigation
+    }
+
     let archives: [CityArchive]
     let selectedID: UUID?
     let routeArchiveID: UUID?
+    let navigationArchiveID: UUID?
+    let userCoordinate: CLLocationCoordinate2D?
     let focusCoordinate: CLLocationCoordinate2D?
     let showsUserLocation: Bool
     let onSelect: (CityArchive) -> Void
+    let onRouteResult: (RouteKind, Bool) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -701,53 +851,235 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView(frame: .zero)
         mapView.delegate = context.coordinator
+        mapView.preferredConfiguration = MKStandardMapConfiguration(elevationStyle: .realistic)
         mapView.showsCompass = false
-        mapView.pointOfInterestFilter = .excludingAll
-            mapView.setRegion(MKCoordinateRegion(center: MockArchiveData.chengduCenter.coordinate, latitudinalMeters: 4_200, longitudinalMeters: 4_200), animated: false)
+        mapView.showsBuildings = true
+        mapView.pointOfInterestFilter = .includingAll
+        mapView.setRegion(MKCoordinateRegion(center: MockArchiveData.chengduCenter.coordinate, latitudinalMeters: 4_200, longitudinalMeters: 4_200), animated: false)
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
         context.coordinator.parent = self
-        mapView.showsUserLocation = showsUserLocation
+        mapView.showsUserLocation = false
 
-        let existingIDs = Set(mapView.annotations.compactMap { ($0 as? ArchiveAnnotation)?.archive.id })
-        let currentIDs = Set(archives.map(\.id))
+        mapView.removeAnnotations(mapView.annotations.compactMap { annotation in
+            annotation is CurrentUserAnnotation ? annotation : nil
+        })
+        if showsUserLocation, let userCoordinate {
+            mapView.addAnnotation(CurrentUserAnnotation(coordinate: userCoordinate))
+        }
+
         mapView.removeAnnotations(mapView.annotations.compactMap { annotation in
             guard let archiveAnnotation = annotation as? ArchiveAnnotation else { return nil }
-            return currentIDs.contains(archiveAnnotation.archive.id) ? nil : archiveAnnotation
+            guard let latestArchive = archives.first(where: { $0.id == archiveAnnotation.archive.id }) else {
+                return archiveAnnotation
+            }
+            return latestArchive == archiveAnnotation.archive ? nil : archiveAnnotation
         })
 
+        let existingIDs = Set(mapView.annotations.compactMap { ($0 as? ArchiveAnnotation)?.archive.id })
         let newAnnotations = archives.filter { !existingIDs.contains($0.id) }.map(ArchiveAnnotation.init)
         mapView.addAnnotations(newAnnotations)
 
+        mapView.removeAnnotations(mapView.annotations.compactMap { annotation in
+            annotation is HistoryStopAnnotation ? annotation : nil
+        })
+
         if let selected = archives.first(where: { $0.id == selectedID }) {
-            let overlays = mapView.overlays
-            mapView.removeOverlays(overlays)
             let coordinates = selected.historicalStops.map { $0.coordinate.coordinate }
             if let residentCenter = coordinates.residentCenter ?? Optional(selected.currentLocation.coordinate) {
-                mapView.addOverlay(MKCircle(center: residentCenter, radius: 420))
+                context.coordinator.updateResidentCircle(on: mapView, center: residentCenter)
             }
-            if coordinates.count > 1 && routeArchiveID == selected.id {
-                mapView.addOverlay(MKPolyline(coordinates: coordinates, count: coordinates.count))
+
+            if navigationArchiveID == selected.id, let userCoordinate {
+                context.coordinator.showWalkingRoute(
+                    on: mapView,
+                    key: "navigation-\(selected.id)-\(userCoordinate.latitude)-\(userCoordinate.longitude)",
+                    waypoints: [userCoordinate, selected.currentLocation.coordinate],
+                    fitsRoute: true
+                )
+            } else if routeArchiveID == selected.id, coordinates.count > 1 {
+                let historyAnnotations = selected.historicalStops.enumerated().map { index, stop in
+                    HistoryStopAnnotation(stop: stop, index: index + 1)
+                }
+                mapView.addAnnotations(historyAnnotations)
+                let coordinateKey = coordinates.map { "\($0.latitude),\($0.longitude)" }.joined(separator: "|")
+                context.coordinator.showWalkingRoute(
+                    on: mapView,
+                    key: "history-\(selected.id)-\(coordinateKey)",
+                    waypoints: coordinates,
+                    fitsRoute: true,
+                    kind: .history,
+                    fallbackWaypoints: MockArchiveData.roadHistoryRoute(for: selected)
+                )
+            } else {
+                context.coordinator.clearWalkingRoutes(on: mapView)
             }
-        } else if !mapView.overlays.isEmpty {
-            mapView.removeOverlays(mapView.overlays)
+        } else {
+            context.coordinator.clearResidentCircle(on: mapView)
+            context.coordinator.clearWalkingRoutes(on: mapView)
         }
 
-        if let focusCoordinate {
+        if let focusCoordinate, navigationArchiveID == nil, routeArchiveID == nil {
             mapView.setRegion(MKCoordinateRegion(center: focusCoordinate, latitudinalMeters: 1_400, longitudinalMeters: 1_400), animated: true)
         }
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         var parent: ArchiveMapRepresentable
+        private var residentCircle: MKCircle?
+        private var walkingOverlays: [MKPolyline] = []
+        private var renderedRouteKey: String?
+        private var routeTask: Task<Void, Never>?
 
         init(parent: ArchiveMapRepresentable) {
             self.parent = parent
         }
 
+        func updateResidentCircle(on mapView: MKMapView, center: CLLocationCoordinate2D) {
+            if let residentCircle {
+                mapView.removeOverlay(residentCircle)
+            }
+            let circle = MKCircle(center: center, radius: 420)
+            residentCircle = circle
+            mapView.addOverlay(circle, level: .aboveRoads)
+        }
+
+        func clearResidentCircle(on mapView: MKMapView) {
+            guard let residentCircle else { return }
+            mapView.removeOverlay(residentCircle)
+            self.residentCircle = nil
+        }
+
+        func clearWalkingRoutes(on mapView: MKMapView) {
+            routeTask?.cancel()
+            routeTask = nil
+            if !walkingOverlays.isEmpty {
+                mapView.removeOverlays(walkingOverlays)
+            }
+            walkingOverlays = []
+            renderedRouteKey = nil
+        }
+
+        func showWalkingRoute(
+            on mapView: MKMapView,
+            key: String,
+            waypoints: [CLLocationCoordinate2D],
+            fitsRoute: Bool,
+            kind: RouteKind = .navigation,
+            fallbackWaypoints: [CLLocationCoordinate2D] = []
+        ) {
+            guard renderedRouteKey != key else { return }
+            clearWalkingRoutes(on: mapView)
+            renderedRouteKey = key
+
+            let fallbackRoute: MKPolyline?
+            if fallbackWaypoints.count > 1 {
+                var coordinates = fallbackWaypoints
+                let polyline = MKPolyline(coordinates: &coordinates, count: coordinates.count)
+                fallbackRoute = polyline
+                walkingOverlays = [polyline]
+                mapView.addOverlay(polyline, level: .aboveLabels)
+                if fitsRoute {
+                    mapView.setVisibleMapRect(
+                        polyline.boundingMapRect,
+                        edgePadding: UIEdgeInsets(top: 120, left: 48, bottom: 280, right: 48),
+                        animated: true
+                    )
+                }
+            } else {
+                fallbackRoute = nil
+            }
+
+            routeTask = Task { @MainActor in
+                var routes: [MKPolyline] = []
+                for index in 0..<(waypoints.count - 1) {
+                    guard !Task.isCancelled else { return }
+                    if let polyline = await roadPolyline(
+                        from: waypoints[index],
+                        to: waypoints[index + 1]
+                    ) {
+                        routes.append(polyline)
+                    }
+                }
+
+                guard !Task.isCancelled, renderedRouteKey == key else { return }
+                if routes.count != waypoints.count - 1 {
+                    routes = fallbackRoute.map { [$0] } ?? []
+                } else if let fallbackRoute {
+                    mapView.removeOverlay(fallbackRoute)
+                }
+                walkingOverlays = routes
+                if fallbackRoute == nil || routes.first !== fallbackRoute {
+                    mapView.addOverlays(routes, level: .aboveLabels)
+                }
+                if fitsRoute, !routes.isEmpty {
+                    let routeRect = routes.reduce(MKMapRect.null) { partialResult, route in
+                        partialResult.union(route.boundingMapRect)
+                    }
+                    if !routeRect.isNull {
+                        mapView.setVisibleMapRect(
+                            routeRect,
+                            edgePadding: UIEdgeInsets(top: 120, left: 48, bottom: 280, right: 48),
+                            animated: true
+                        )
+                    }
+                }
+                parent.onRouteResult(kind, !routes.isEmpty)
+            }
+        }
+
+        private func roadPolyline(
+            from source: CLLocationCoordinate2D,
+            to destination: CLLocationCoordinate2D
+        ) async -> MKPolyline? {
+            for transportType in [MKDirectionsTransportType.walking, .automobile] {
+                guard !Task.isCancelled else { return nil }
+                let request = MKDirections.Request()
+                request.source = MKMapItem(placemark: MKPlacemark(coordinate: source))
+                request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destination))
+                request.transportType = transportType
+                request.requestsAlternateRoutes = false
+
+                let directions = MKDirections(request: request)
+                if let response = try? await directions.calculate(), let route = response.routes.first {
+                    return route.polyline
+                }
+            }
+            return nil
+        }
+
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is CurrentUserAnnotation || annotation is MKUserLocation {
+                let identifier = "CurrentUserArrow"
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                view.annotation = annotation
+                view.image = Self.userLocationArrowImage
+                view.backgroundColor = .clear
+                view.layer.cornerRadius = 0
+                view.layer.borderWidth = 0
+                view.layer.shadowColor = UIColor.black.cgColor
+                view.layer.shadowOpacity = 0.18
+                view.layer.shadowRadius = 6
+                view.layer.shadowOffset = CGSize(width: 0, height: 3)
+                view.canShowCallout = false
+                return view
+            }
+
+            if let annotation = annotation as? HistoryStopAnnotation {
+                let identifier = "HistoryStop"
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) ?? MKAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                view.annotation = annotation
+                view.image = Self.historyStopImage(number: annotation.index)
+                view.canShowCallout = true
+                view.layer.shadowColor = UIColor.black.cgColor
+                view.layer.shadowOpacity = 0.16
+                view.layer.shadowRadius = 5
+                view.layer.shadowOffset = CGSize(width: 0, height: 3)
+                return view
+            }
+
             guard let annotation = annotation as? ArchiveAnnotation else {
                 return nil
             }
@@ -764,11 +1096,52 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
             return view
         }
 
+        private static let userLocationArrowImage: UIImage = {
+            let size = CGSize(width: 44, height: 44)
+            return UIGraphicsImageRenderer(size: size).image { context in
+                let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+                UIColor.white.setFill()
+                context.cgContext.fillEllipse(in: bounds)
+
+                UIColor(Color.tanPrimary).setFill()
+                context.cgContext.fillEllipse(in: bounds.insetBy(dx: 4, dy: 4))
+
+                let symbol = UIImage(
+                    systemName: "location.north.fill",
+                    withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .black)
+                )?.withTintColor(.white, renderingMode: .alwaysOriginal)
+                symbol?.draw(in: CGRect(x: 12, y: 9, width: 20, height: 25))
+            }
+        }()
+
+        private static func historyStopImage(number: Int) -> UIImage {
+            let size = CGSize(width: 36, height: 36)
+            return UIGraphicsImageRenderer(size: size).image { context in
+                let bounds = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+                UIColor.white.setFill()
+                context.cgContext.fillEllipse(in: bounds)
+                UIColor(Color.tanPrimary).setFill()
+                context.cgContext.fillEllipse(in: bounds.insetBy(dx: 3, dy: 3))
+
+                let text = "\(number)" as NSString
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 14, weight: .black),
+                    .foregroundColor: UIColor.white
+                ]
+                let textSize = text.size(withAttributes: attributes)
+                text.draw(
+                    at: CGPoint(x: (size.width - textSize.width) / 2, y: (size.height - textSize.height) / 2),
+                    withAttributes: attributes
+                )
+            }
+        }
+
         func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
             guard let annotation = annotation as? ArchiveAnnotation else {
                 return
             }
             parent.onSelect(annotation.archive)
+            mapView.deselectAnnotation(annotation, animated: false)
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
@@ -783,9 +1156,12 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
                 return MKOverlayRenderer(overlay: overlay)
             }
             let renderer = MKPolylineRenderer(polyline: polyline)
-            renderer.strokeColor = UIColor(Color.tanPrimary)
-            renderer.lineWidth = 4
-            renderer.lineDashPattern = [8, 8]
+            let isNavigation = renderedRouteKey?.hasPrefix("navigation-") == true
+            renderer.strokeColor = UIColor(isNavigation ? Color.heritageGreen : Color.tanPrimary)
+            renderer.lineWidth = isNavigation ? 7 : 6
+            renderer.lineDashPattern = isNavigation ? nil : [10, 6]
+            renderer.lineCap = .round
+            renderer.lineJoin = .round
             return renderer
         }
     }
@@ -809,5 +1185,26 @@ private final class ArchiveAnnotation: NSObject, MKAnnotation {
 
     init(archive: CityArchive) {
         self.archive = archive
+    }
+}
+
+private final class CurrentUserAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+
+    init(coordinate: CLLocationCoordinate2D) {
+        self.coordinate = coordinate
+    }
+}
+
+private final class HistoryStopAnnotation: NSObject, MKAnnotation {
+    let stop: RouteStop
+    let index: Int
+    var coordinate: CLLocationCoordinate2D { stop.coordinate.coordinate }
+    var title: String? { "第 \(index) 站 · \(stop.title)" }
+    var subtitle: String? { stop.appearedAt }
+
+    init(stop: RouteStop, index: Int) {
+        self.stop = stop
+        self.index = index
     }
 }

@@ -10,7 +10,6 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var store: ArchiveStore
     @State private var favoritesExpanded = true
-    @State private var toastMessage: String?
 
     private var favorites: [CityArchive] {
         store.archives.filter { store.favoriteIDs.contains($0.id) }
@@ -20,9 +19,11 @@ struct ProfileView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 profileHeader
+                if store.selectedRole == .visitor {
+                    xilianCard
+                }
                 contributionCard
                 nextStepCard
-                roleSwitch
                 if store.selectedRole == .stallOwner {
                     stallOwnerPanel
                 }
@@ -31,7 +32,6 @@ struct ProfileView: View {
             .padding(16)
         }
         .background(Color.tanPaper.ignoresSafeArea())
-        .toastOverlay(toastMessage)
         .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -93,22 +93,42 @@ struct ProfileView: View {
         }
     }
 
-    private var roleSwitch: some View {
-        Surface {
-            Text("身份切换")
-                .font(.system(size: 18, weight: .bold))
-            Picker("身份", selection: Binding(get: {
-                store.selectedRole
-            }, set: { role in
-                store.switchRole(to: role)
-                showToast(role == .stallOwner ? "已切换到摊户端" : "已切换到游客端", binding: $toastMessage)
-            })) {
-                ForEach(AppRole.allCases, id: \.self) { role in
-                    Text(role.title).tag(role)
+    private var xilianCard: some View {
+        Button {
+            store.selectedTab = .map
+        } label: {
+            HStack(spacing: 13) {
+                XilianAnimatedAvatarView(state: .idle, size: .medium)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("昔涟陪你逛摊")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(Color.tanInk)
+                    Text("伙伴，去地图上点一点摊位，让昔涟给你讲讲它的故事。")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
+                Spacer()
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(Color.tanPrimary)
             }
-            .pickerStyle(.segmented)
+            .padding(15)
+            .background {
+                LinearGradient(
+                    colors: [Color.white, Color(red: 1, green: 0.92, blue: 0.95)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                    .stroke(Color.tanLine)
+            }
+            .shadow(color: Color.tanInk.opacity(0.05), radius: 10, x: 0, y: 6)
         }
+        .buttonStyle(.plain)
     }
 
     private var nextStepCard: some View {

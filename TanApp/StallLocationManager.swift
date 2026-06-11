@@ -13,9 +13,15 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
     @Published var authorizationStatus: CLAuthorizationStatus
 
     private let manager = CLLocationManager()
+    private static let tianfuSquare = CLLocationCoordinate2D(latitude: 30.6570, longitude: 104.0658)
 
     override init() {
         authorizationStatus = manager.authorizationStatus
+#if targetEnvironment(simulator)
+        currentCoordinate = Self.tianfuSquare
+#else
+        currentCoordinate = nil
+#endif
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
@@ -23,6 +29,9 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
     }
 
     func requestAndStartUpdating() {
+#if targetEnvironment(simulator)
+        currentCoordinate = Self.tianfuSquare
+#else
         guard CLLocationManager.locationServicesEnabled() else {
             return
         }
@@ -37,6 +46,7 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
         @unknown default:
             break
         }
+#endif
     }
 
     func stopUpdating() {
@@ -51,6 +61,10 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+#if targetEnvironment(simulator)
+        currentCoordinate = Self.tianfuSquare
+#else
         currentCoordinate = locations.last?.coordinate
+#endif
     }
 }

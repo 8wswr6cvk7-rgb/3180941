@@ -8,41 +8,31 @@
 import Foundation
 
 struct QwenArchiveAgent {
-    private let endpoint = URL(string: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")!
-
     func refineDraft(
         currentDraft: AIArchiveDraft,
         userText: String,
         userName: String
     ) async throws -> QwenArchiveAgentResult {
-        guard let apiKey = LocalQwenSecrets.load().apiKey, !apiKey.isEmpty else {
-            throw QwenArchiveAgentError.missingAPIKey
-        }
-
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 20
-
-        let body = QwenChatRequest(
-            model: LocalQwenSecrets.load().model,
-            messages: [
-                QwenChatMessage(role: "system", content: systemPrompt),
-                QwenChatMessage(role: "user", content: userPrompt(currentDraft: currentDraft, userText: userText, userName: userName))
-            ],
-            temperature: 0.35
-        )
-        request.httpBody = try JSONEncoder().encode(body)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
-            throw QwenArchiveAgentError.requestFailed
-        }
-
-        let chatResponse = try JSONDecoder().decode(QwenChatResponse.self, from: data)
-        guard let content = chatResponse.choices.first?.message.content else {
-            throw QwenArchiveAgentError.emptyResponse
+        let content: String
+        do {
+            content = try await UnifiedQwenService.shared.chat(
+                systemPrompt: systemPrompt,
+                userPrompt: userPrompt(
+                    currentDraft: currentDraft,
+                    userText: userText,
+                    userName: userName
+                ),
+                temperature: 0.35
+            )
+        } catch let error as UnifiedQwenServiceError {
+            switch error {
+            case .missingAPIKey:
+                throw QwenArchiveAgentError.missingAPIKey
+            case .requestFailed:
+                throw QwenArchiveAgentError.requestFailed
+            case .emptyResponse:
+                throw QwenArchiveAgentError.emptyResponse
+            }
         }
 
         let jsonData = try extractJSONObject(from: content)
@@ -138,48 +128,4 @@ enum QwenArchiveAgentError: Error {
     case requestFailed
     case emptyResponse
     case invalidJSON
-}
-
-private struct QwenChatRequest: Encodable {
-    var model: String
-    var messages: [QwenChatMessage]
-    var temperature: Double
-}
-
-private struct QwenChatMessage: Codable {
-    var role: String
-    var content: String
-}
-
-private struct QwenChatResponse: Decodable {
-    var choices: [Choice]
-
-    struct Choice: Decodable {
-        var message: QwenChatMessage
-    }
-}
-
-private struct LocalQwenSecrets: Decodable {
-    var dashscopeAPIKey: String?
-    var qwenModel: String?
-
-    var apiKey: String? {
-        dashscopeAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var model: String {
-        let value = qwenModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? "qwen-plus" : value
-    }
-
-    static func load() -> LocalQwenSecrets {
-        guard
-            let url = Bundle.main.url(forResource: "LocalSecrets", withExtension: "json"),
-            let data = try? Data(contentsOf: url),
-            let secrets = try? JSONDecoder().decode(LocalQwenSecrets.self, from: data)
-        else {
-            return LocalQwenSecrets(dashscopeAPIKey: nil, qwenModel: "qwen-plus")
-        }
-        return secrets
-    }
 }

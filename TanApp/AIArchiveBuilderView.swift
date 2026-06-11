@@ -260,14 +260,7 @@ struct AIArchiveBuilderView: View {
     private var draftCard: some View {
         Surface {
             HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
-                        .fill(Color.tanPrimary.opacity(0.14))
-                    Image(systemName: draft.category.icon)
-                        .font(.system(size: 25, weight: .bold))
-                        .foregroundStyle(Color.tanPrimary)
-                }
-                .frame(width: 58, height: 58)
+                DraftAvatarView(category: draft.category)
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("AI 生成档案")
@@ -536,6 +529,44 @@ private struct InfoChip: View {
             .frame(height: 30)
             .background(Color.tanPaper)
             .clipShape(Capsule())
+    }
+}
+
+private struct DraftAvatarView: View {
+    let category: ArchiveCategory
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.tanPrimary.opacity(0.22), Color.heritageGreen.opacity(0.16), .white],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: category.icon)
+                .font(.system(size: 25, weight: .bold))
+                .foregroundStyle(Color.tanPrimary)
+            VStack {
+                HStack {
+                    Spacer()
+                    Text("AI")
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(Color.tanPrimary)
+                        .clipShape(Capsule())
+                }
+                Spacer()
+            }
+            .padding(5)
+        }
+        .frame(width: 58, height: 58)
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                .stroke(Color.white.opacity(0.82))
+        }
+        .accessibilityLabel("AI 根据档案类别生成的头像")
     }
 }
 

@@ -168,6 +168,26 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
+    func updateArchive(
+        _ archive: CityArchive,
+        with draft: AIArchiveDraft,
+        status: ArchiveStatus,
+        historicalStops: [RouteStop]
+    ) {
+        updateArchive(archive.id) { item in
+            item.name = draft.name
+            item.ownerName = draft.ownerName
+            item.category = draft.category
+            item.tags = draft.tags
+            item.priceOrService = draft.priceOrService
+            item.status = status
+            item.yearsActive = draft.yearsActive
+            item.summary = draft.summary
+            item.craftProcess = draft.craftProcess
+            item.historicalStops = historicalStops
+        }
+    }
+
     func navigateToArchiveOnMap(_ archive: CityArchive) {
         mapFocusRequest = MapFocusRequest(archiveID: archive.id)
         selectedTab = .map

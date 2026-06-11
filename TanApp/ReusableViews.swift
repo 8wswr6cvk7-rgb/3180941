@@ -8,20 +8,52 @@
 import SwiftUI
 import UIKit
 
+struct ArchiveAvatarView: View {
+    let archive: CityArchive
+    var size: CGFloat = 66
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [archive.status.tint.opacity(0.24), Color.tanPrimary.opacity(0.16), .white],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: archive.category.icon)
+                .font(.system(size: size * 0.38, weight: .bold))
+                .foregroundStyle(archive.status.tint)
+            VStack {
+                HStack {
+                    Spacer()
+                    Text("AI")
+                        .font(.system(size: max(8, size * 0.13), weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
+                        .background(Color.tanPrimary)
+                        .clipShape(Capsule())
+                }
+                Spacer()
+            }
+            .padding(6)
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+                .stroke(Color.white.opacity(0.82))
+        }
+        .accessibilityLabel("根据档案内容生成的 \(archive.category.title) 头像")
+    }
+}
+
 struct ArchiveRow: View {
     let archive: CityArchive
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
-                        .fill(archive.status.tint.opacity(0.13))
-                    Image(systemName: archive.category.icon)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(archive.status.tint)
-                }
-                .frame(width: 58, height: 58)
+                ArchiveAvatarView(archive: archive, size: 58)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(archive.name)
