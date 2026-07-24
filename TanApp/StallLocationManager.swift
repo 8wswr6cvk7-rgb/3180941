@@ -68,3 +68,40 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
 #endif
     }
 }
+
+enum XilianGuideOriginSource: Equatable {
+    case liveLocation
+    case chengduDemoLocation
+}
+
+struct XilianGuideOriginDecision {
+    let coordinate: CLLocationCoordinate2D
+    let source: XilianGuideOriginSource
+}
+
+enum XilianGuideOriginPolicy {
+    static let chengduDemoCoordinate = CLLocationCoordinate2D(latitude: 30.6570, longitude: 104.0658)
+    static let chengduRange: CLLocationDistance = 50_000
+
+    static func decision(for coordinate: CLLocationCoordinate2D?) -> XilianGuideOriginDecision {
+        guard let coordinate, CLLocationCoordinate2DIsValid(coordinate) else {
+            return XilianGuideOriginDecision(
+                coordinate: chengduDemoCoordinate,
+                source: .chengduDemoLocation
+            )
+        }
+
+        let current = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let chengdu = CLLocation(
+            latitude: chengduDemoCoordinate.latitude,
+            longitude: chengduDemoCoordinate.longitude
+        )
+        guard current.distance(from: chengdu) <= chengduRange else {
+            return XilianGuideOriginDecision(
+                coordinate: chengduDemoCoordinate,
+                source: .chengduDemoLocation
+            )
+        }
+        return XilianGuideOriginDecision(coordinate: coordinate, source: .liveLocation)
+    }
+}

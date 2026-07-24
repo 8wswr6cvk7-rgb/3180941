@@ -6,6 +6,7 @@ enum XilianAnimationState: Hashable {
     case speaking
     case happy
     case worried
+    case moving
 }
 
 struct XilianAnimatedAvatarView: View {
@@ -22,6 +23,7 @@ private struct XilianAnimationBody: View {
     let state: XilianAnimationState
     let size: XilianAvatarView.Size
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var animated = false
 
     var body: some View {
@@ -50,7 +52,7 @@ private struct XilianAnimationBody: View {
                     .background(Color.white.opacity(0.96))
                     .clipShape(Circle())
                     .offset(x: 2, y: 2)
-            } else if state == .happy || state == .speaking {
+            } else if state == .happy || state == .speaking || state == .moving {
                 Image(systemName: "sparkles")
                     .font(.system(size: size == .small ? 10 : 13, weight: .bold))
                     .foregroundStyle(Color.tanPrimary)
@@ -60,10 +62,12 @@ private struct XilianAnimationBody: View {
         }
         .frame(width: size.dimension + 10, height: size.dimension + 10)
         .onAppear {
-            withAnimation(animation) {
-                animated = true
-            }
+            animated = !reduceMotion
         }
+        .onChange(of: reduceMotion) { shouldReduceMotion in
+            animated = !shouldReduceMotion
+        }
+        .animation(reduceMotion ? nil : animation, value: animated)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
@@ -80,11 +84,13 @@ private struct XilianAnimationBody: View {
             return .easeInOut(duration: 0.5).repeatForever(autoreverses: true)
         case .worried:
             return .easeInOut(duration: 0.68).repeatForever(autoreverses: true)
+        case .moving:
+            return .easeInOut(duration: 0.48).repeatForever(autoreverses: true)
         }
     }
 
     private var baseScale: CGFloat {
-        state == .happy ? 1 : 0.99
+        state == .happy || state == .moving ? 1 : 0.99
     }
 
     private var animatedScale: CGFloat {
@@ -94,6 +100,7 @@ private struct XilianAnimationBody: View {
         case .speaking: return 1.06
         case .happy: return 1.08
         case .worried: return 1.01
+        case .moving: return 1.05
         }
     }
 
@@ -101,6 +108,7 @@ private struct XilianAnimationBody: View {
         switch state {
         case .idle, .speaking, .happy: return 2
         case .thinking, .worried: return 0
+        case .moving: return 1
         }
     }
 
@@ -110,6 +118,7 @@ private struct XilianAnimationBody: View {
         case .speaking: return -2
         case .happy: return -4
         case .thinking, .worried: return 0
+        case .moving: return -4
         }
     }
 
@@ -117,6 +126,7 @@ private struct XilianAnimationBody: View {
         switch state {
         case .thinking: return -2
         case .worried: return -2.5
+        case .moving: return -3
         default: return 0
         }
     }
@@ -125,6 +135,7 @@ private struct XilianAnimationBody: View {
         switch state {
         case .thinking: return 2
         case .worried: return 2.5
+        case .moving: return 3
         default: return 0
         }
     }
@@ -132,7 +143,7 @@ private struct XilianAnimationBody: View {
     private var glowColor: Color {
         switch state {
         case .worried: return .warningRed
-        case .happy, .speaking: return .tanPrimary
+        case .happy, .speaking, .moving: return .tanPrimary
         case .thinking: return Color(red: 0.63, green: 0.43, blue: 0.72)
         case .idle: return Color(red: 0.88, green: 0.63, blue: 0.77)
         }
@@ -145,6 +156,7 @@ private struct XilianAnimationBody: View {
         case .speaking: return "昔涟正在回答"
         case .happy: return "昔涟很开心"
         case .worried: return "昔涟正在担心这份档案"
+        case .moving: return "昔涟正在靠近一段记忆"
         }
     }
 }

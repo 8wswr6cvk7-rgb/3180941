@@ -10,9 +10,35 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var store: ArchiveStore
     @State private var favoritesExpanded = true
+#if DEBUG
+    @State private var showDemoResetConfirmation = false
+    @State private var isResettingDemo = false
+#endif
 
     private var favorites: [CityArchive] {
         store.archives.filter { store.favoriteIDs.contains($0.id) }
+    }
+
+    private var ownerArchives: [CityArchive] {
+        store.currentUserArchives
+    }
+
+    private var archivesWithCommunityClues: [CityArchive] {
+        ownerArchives.filter { communityClueCount(in: $0) > 0 }
+    }
+
+    private var receivedContributionCount: Int {
+        ownerArchives.reduce(0) { total, archive in
+            total
+                + archive.comments.filter { $0.contributorName != store.user.name }.count
+                + archive.photos.filter { $0.contributorName != store.user.name }.count
+        }
+    }
+
+    private var receivedStatusCount: Int {
+        ownerArchives.reduce(0) { total, archive in
+            total + archive.statusConfirmations.filter { $0.contributorName != store.user.name }.count
+        }
     }
 
     var body: some View {
@@ -21,19 +47,39 @@ struct ProfileView: View {
                 profileHeader
                 if store.selectedRole == .visitor {
                     xilianCard
-                }
-                contributionCard
-                nextStepCard
-                if store.selectedRole == .stallOwner {
+                    visitorFootprintCard
+                    favoritesPanel
+                } else {
+                    stallOwnerOverviewCard
                     stallOwnerPanel
+                    receivedCommunityPanel
                 }
-                favoritesPanel
             }
             .padding(16)
         }
         .background(Color.tanPaper.ignoresSafeArea())
         .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: ArchiveDetailRoute.self) { route in
+            if let archive = store.archive(with: route.archiveID) {
+                ArchiveDetailView(archive: archive, initialSection: route.initialSection)
+            }
+        }
+#if DEBUG
+        .confirmationDialog("恢复比赛演示数据？", isPresented: $showDemoResetConfirmation, titleVisibility: .visible) {
+            Button(isResettingDemo ? "正在恢复…" : "恢复统一 Seed 数据", role: .destructive) {
+                guard !isResettingDemo else { return }
+                isResettingDemo = true
+                Task {
+                    await store.resetCompetitionDemoData()
+                    isResettingDemo = false
+                }
+            }
+            .disabled(isResettingDemo)
+        } message: {
+            Text("将清除本机新增档案、补档图片、点赞、到访与状态线索，并恢复比赛 Seed 数据。")
+        }
+#endif
     }
 
     private var profileHeader: some View {
@@ -53,9 +99,6 @@ struct ProfileView: View {
                 Text(store.selectedRole == .stallOwner ? "摊户 · AI 建档管理" : "市景侠 · 社区补档者")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.tanInk.opacity(0.62))
-                Text(store.cloudState)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color.tanPrimary)
             }
             Spacer()
         }
@@ -73,21 +116,44 @@ struct ProfileView: View {
                 .stroke(Color.white.opacity(0.8))
         }
         .shadow(color: Color.tanInk.opacity(0.07), radius: 16, x: 0, y: 9)
+#if DEBUG
+        .onLongPressGesture(minimumDuration: 2) {
+            showDemoResetConfirmation = true
+        }
+#endif
     }
 
-    private var contributionCard: some View {
+    private var visitorFootprintCard: some View {
         Surface {
-            Text("市景侠积分")
+            Text("我的守护足迹")
                 .font(.system(size: 18, weight: .black))
                 .foregroundStyle(Color.tanInk)
 
             HStack(spacing: 10) {
-                ProfileStatCard(number: "\(store.user.points)", label: "积分")
-                ProfileStatCard(number: store.user.rank, label: "排名")
                 ProfileStatCard(number: "\(favorites.count)", label: "守护")
+                ProfileStatCard(number: "\(store.visitedArchiveIDs.count)", label: "到访")
+                ProfileStatCard(number: "\(store.litArchiveIDs.count)", label: "点亮")
             }
 
-            Text("积分来自照片点赞、评论点赞与补档贡献。")
+            Text("发布补档后会留下到访记录；守护与点亮也能随时回看。")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.tanInk.opacity(0.58))
+        }
+    }
+
+    private var stallOwnerOverviewCard: some View {
+        Surface {
+            Text("档案维护概览")
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(Color.tanInk)
+
+            HStack(spacing: 10) {
+                ProfileStatCard(number: "\(ownerArchives.count)", label: "我的档案")
+                ProfileStatCard(number: "\(receivedContributionCount)", label: "社区补档")
+                ProfileStatCard(number: "\(receivedStatusCount)", label: "状态线索")
+            }
+
+            Text("集中查看自己建立的档案，以及社区为这些档案留下的新内容。")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.tanInk.opacity(0.58))
         }
@@ -100,10 +166,10 @@ struct ProfileView: View {
             HStack(spacing: 13) {
                 XilianAnimatedAvatarView(state: .idle, size: .medium)
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("昔涟陪你逛摊")
+                    Text("昔涟 · 城市记忆向导")
                         .font(.system(size: 18, weight: .black))
                         .foregroundStyle(Color.tanInk)
-                    Text("伙伴，去地图上点一点摊位，让昔涟给你讲讲它的故事。")
+                    Text("去地图上点一点摊位，让昔涟沿路线陪你认识它的故事。")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -131,31 +197,56 @@ struct ProfileView: View {
         .buttonStyle(.plain)
     }
 
-    private var nextStepCard: some View {
-        ProfileActionRow(
-            icon: store.selectedRole == .stallOwner ? "sparkles" : "map.fill",
-            title: store.selectedRole == .stallOwner ? "下一步：用 AI 建一个新档案" : "下一步：去地图上发现一个附近摊位",
-            subtitle: store.selectedRole == .stallOwner ? "补照片、补路线、补故事，先从一句口述开始。" : "点开地图上的摊位，看看故事、路线和消失预警。"
-        ) {
-            store.selectedTab = store.selectedRole == .stallOwner ? .build : .map
-        }
-    }
-
     private var stallOwnerPanel: some View {
         Surface {
             ProfileActionRow(
                 icon: "sparkles",
                 title: "摊户工作台",
-                subtitle: "AI 建档、我的档案、收到的补档都从这里开始。"
+                subtitle: "用自然语言整理新档案，或继续完善已有记录。"
             ) {
                 store.selectedTab = .build
             }
 
-            if store.currentUserArchives.isEmpty {
+            Text("我的档案")
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(Color.tanInk)
+
+            if ownerArchives.isEmpty {
                 EmptyStateView(text: "还没有建立档案，先记录一个熟悉的摊吧。", icon: "sparkles")
             } else {
-                ForEach(store.currentUserArchives) { archive in
-                    ArchiveRow(archive: archive)
+                ForEach(ownerArchives) { archive in
+                    NavigationLink(value: ArchiveDetailRoute.top(archive.id)) {
+                        ArchiveRow(archive: archive)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var receivedCommunityPanel: some View {
+        Surface {
+            Text("收到的社区线索")
+                .font(.system(size: 18, weight: .black))
+                .foregroundStyle(Color.tanInk)
+            Text("评论、现场照片和状态确认会汇总到对应档案中。")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            if ownerArchives.isEmpty {
+                EmptyStateView(text: "建立档案后，这里会显示社区留下的补充线索。", icon: "bubble.left.and.bubble.right")
+            } else if archivesWithCommunityClues.isEmpty {
+                EmptyStateView(text: "暂时还没有收到社区线索。", icon: "bubble.left.and.bubble.right")
+            } else {
+                ForEach(archivesWithCommunityClues) { archive in
+                    NavigationLink(value: ArchiveDetailRoute.community(archive.id)) {
+                        StallOwnerCommunityRow(
+                            archive: archive,
+                            contributionCount: communityContributionCount(in: archive),
+                            statusCount: communityStatusCount(in: archive)
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -192,10 +283,10 @@ struct ProfileView: View {
 
             if favoritesExpanded {
                 if favorites.isEmpty {
-                    EmptyStateView(text: "还没有收藏的摊位，去地图上发现一个吧。", icon: "heart")
+                    EmptyStateView(text: "还没有守护的档案，去地图上发现一个吧。", icon: "heart")
                 } else {
                     ForEach(favorites) { archive in
-                        NavigationLink(value: archive.id) {
+                        NavigationLink(value: ArchiveDetailRoute.top(archive.id)) {
                             ArchiveRow(archive: archive)
                         }
                         .buttonStyle(.plain)
@@ -203,11 +294,19 @@ struct ProfileView: View {
                 }
             }
         }
-        .navigationDestination(for: UUID.self) { id in
-            if let archive = store.archive(with: id) {
-                ArchiveDetailView(archive: archive)
-            }
-        }
+    }
+
+    private func communityContributionCount(in archive: CityArchive) -> Int {
+        archive.comments.filter { $0.contributorName != store.user.name }.count
+            + archive.photos.filter { $0.contributorName != store.user.name }.count
+    }
+
+    private func communityStatusCount(in archive: CityArchive) -> Int {
+        archive.statusConfirmations.filter { $0.contributorName != store.user.name }.count
+    }
+
+    private func communityClueCount(in archive: CityArchive) -> Int {
+        communityContributionCount(in: archive) + communityStatusCount(in: archive)
     }
 }
 
@@ -267,5 +366,43 @@ private struct ProfileActionRow: View {
             .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct StallOwnerCommunityRow: View {
+    let archive: CityArchive
+    let contributionCount: Int
+    let statusCount: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: archive.category.icon)
+                .font(.system(size: 19, weight: .bold))
+                .foregroundStyle(Color.tanPrimary)
+                .frame(width: 44, height: 44)
+                .background(Color.tanPrimary.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(archive.name)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.tanInk)
+                    .lineLimit(1)
+                Text("\(contributionCount) 条补档 · \(statusCount) 条状态线索")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(Color.tanPaper)
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(archive.name)，\(contributionCount) 条社区补档，\(statusCount) 条状态线索")
     }
 }

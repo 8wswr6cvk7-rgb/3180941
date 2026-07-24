@@ -23,125 +23,189 @@ struct RootView: View {
 }
 
 struct LoginView: View {
+    private enum LoginField: Hashable {
+        case email
+        case password
+    }
+
     @EnvironmentObject private var store: ArchiveStore
     @State private var selectedRole: AppRole = .visitor
-    @State private var email = ""
-    @State private var password = ""
+    @State private var loginEmail = ""
+    @State private var loginPassword = ""
     @State private var loginError: String?
+    @FocusState private var focusedField: LoginField?
 
     private var canLogin: Bool {
-        email.contains("@") && email.contains(".") && password.count >= 6
+        loginEmail.contains("@") && loginEmail.contains(".") && loginPassword.count >= 6
     }
 
     var body: some View {
         ZStack {
             Color.tanPaper.ignoresSafeArea()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Spacer(minLength: 10)
+            GeometryReader { proxy in
+                let isCompact = proxy.size.height < 760
 
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("摊")
-                            .font(.system(size: 70, weight: .black))
-                            .foregroundStyle(Color.tanInk)
+                VStack(alignment: .leading, spacing: isCompact ? 10 : 14) {
+                    loginHero(compact: isCompact)
+                    loginFields(compact: isCompact)
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("记录成都街头的烟火气")
-                                .font(.system(size: 25, weight: .black))
-                                .foregroundStyle(Color.tanInk)
-                            Text("用邮箱登录，继续查看摊位、手艺、故事和路线。")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.tanInk.opacity(0.68))
-                                .lineSpacing(4)
-                        }
-
-                        HStack(spacing: 8) {
-                            TagPill(text: "成都市井档案")
-                            TagPill(text: "老手艺保护")
-                            TagPill(text: "社区补档")
-                        }
-                    }
-                    .padding(22)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background {
-                        LinearGradient(
-                            colors: [Color.tanPrimary.opacity(0.18), .white],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.xlarge, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: TanRadius.xlarge, style: .continuous)
-                            .stroke(Color.white.opacity(0.75), lineWidth: 1)
-                    }
-                    .shadow(color: Color.tanInk.opacity(0.08), radius: 18, x: 0, y: 10)
-
-                    loginFields
-
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("选择登录身份")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: isCompact ? 16 : 18, weight: .bold))
                             .foregroundStyle(Color.tanInk)
 
-                        HStack(spacing: 12) {
-                            roleButton(.visitor, icon: "figure.walk", title: "用户端", subtitle: "附近摊位 · 老手艺 · 消失预警")
-                            roleButton(.stallOwner, icon: "storefront.fill", title: "摊户端", subtitle: "AI 建档 · 我的档案 · 收到补档")
+                        HStack(alignment: .top, spacing: 10) {
+                            roleButton(
+                                .visitor,
+                                icon: "figure.walk",
+                                title: "用户端",
+                                subtitle: "发现摊位 · 街巷故事",
+                                compact: isCompact
+                            )
+                            roleButton(
+                                .stallOwner,
+                                icon: "storefront.fill",
+                                title: "摊户端",
+                                subtitle: "AI 建档 · 档案维护",
+                                compact: isCompact
+                            )
                         }
                     }
 
                     Button {
                         login()
                     } label: {
-                        Text(selectedRole == .visitor ? "登录并进入地图" : "登录并进入摊户端")
+                        Text(selectedRole == .visitor ? "进入发现页" : "进入 AI 建档")
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(!canLogin)
                     .opacity(canLogin ? 1 : 0.55)
+                    .accessibilityIdentifier("login.submit")
 
-                    Text("原型账号支持任意有效邮箱，密码不少于 6 位。")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-
-                    Text(store.cloudState)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    if !isCompact {
+                        Text("邮箱用于区分本机身份，密码不少于 6 位。")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
-                .padding(24)
+                .frame(maxWidth: 620)
+                .padding(.horizontal, 20)
+                .padding(.vertical, isCompact ? 8 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
     }
 
-    private var loginFields: some View {
+    private func loginHero(compact: Bool) -> some View {
+        HStack(alignment: .center, spacing: compact ? 12 : 18) {
+            Text("摊")
+                .font(.system(size: compact ? 42 : 56, weight: .black))
+                .foregroundStyle(Color.tanInk)
+
+            VStack(alignment: .leading, spacing: compact ? 2 : 5) {
+                Text("记录成都街头的烟火气")
+                    .font(.system(size: compact ? 18 : 23, weight: .black))
+                    .foregroundStyle(Color.tanInk)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text("记录摊位、手艺、人物与街巷故事")
+                    .font(.system(size: compact ? 12 : 14, weight: .semibold))
+                    .foregroundStyle(Color.tanInk.opacity(0.68))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(compact ? 12 : 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            LinearGradient(
+                colors: [Color.tanPrimary.opacity(0.18), .white],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.xlarge, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: TanRadius.xlarge, style: .continuous)
+                .stroke(Color.white.opacity(0.75), lineWidth: 1)
+        }
+        .shadow(color: Color.tanInk.opacity(0.08), radius: 18, x: 0, y: 10)
+    }
+
+    private func loginFields(compact: Bool) -> some View {
         Surface {
             Text("邮箱登录")
-                .font(.system(size: 18, weight: .black))
+                .font(.system(size: compact ? 15 : 18, weight: .black))
                 .foregroundStyle(Color.tanInk)
 
             HStack(spacing: 10) {
                 Image(systemName: "envelope.fill")
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.tanPrimary)
-                TextField("name@example.com", text: $email)
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+
+                ZStack(alignment: .leading) {
+                    TextField("", text: $loginEmail)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .tint(Color.tanPrimary)
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($focusedField, equals: .email)
+                        .submitLabel(.next)
+                        .onSubmit {
+                            focusedField = .password
+                        }
+                        .accessibilityIdentifier("login.email")
+
+                    if loginEmail.isEmpty {
+                        Text(verbatim: "name@example.com")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color.gray.opacity(0.65))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 14)
-            .frame(height: 48)
+            .frame(height: compact ? 44 : 48)
             .background(Color.tanPaper)
             .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
 
             HStack(spacing: 10) {
                 Image(systemName: "lock.fill")
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.tanPrimary)
-                SecureField("请输入至少 6 位密码", text: $password)
-                    .textContentType(.password)
+
+                ZStack(alignment: .leading) {
+                    SecureField("", text: $loginPassword)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.black)
+                        .tint(Color.tanPrimary)
+                        .textContentType(.password)
+                        .focused($focusedField, equals: .password)
+                        .submitLabel(.go)
+                        .onSubmit {
+                            login()
+                        }
+                        .accessibilityIdentifier("login.password")
+
+                    if loginPassword.isEmpty {
+                        Text(verbatim: "请输入至少 6 位密码")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Color.gray.opacity(0.65))
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 14)
-            .frame(height: 48)
+            .frame(height: compact ? 44 : 48)
             .background(Color.tanPaper)
             .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
 
@@ -162,27 +226,33 @@ struct LoginView: View {
         store.login(as: selectedRole)
     }
 
-    private func roleButton(_ role: AppRole, icon: String, title: String, subtitle: String) -> some View {
+    private func roleButton(
+        _ role: AppRole,
+        icon: String,
+        title: String,
+        subtitle: String,
+        compact: Bool
+    ) -> some View {
         Button {
             selectedRole = role
         } label: {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: compact ? 6 : 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 24, weight: .bold))
-                    .frame(width: 42, height: 42)
+                    .font(.system(size: compact ? 18 : 21, weight: .bold))
+                    .frame(width: compact ? 34 : 38, height: compact ? 34 : 38)
                     .background(selectedRole == role ? .white.opacity(0.18) : Color.tanPrimary.opacity(0.12))
                     .clipShape(Circle())
                 Text(title)
-                    .font(.system(size: 17, weight: .black))
+                    .font(.system(size: compact ? 15 : 17, weight: .black))
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: compact ? 11 : 12, weight: .semibold))
                     .foregroundStyle(selectedRole == role ? .white.opacity(0.82) : Color.tanInk.opacity(0.58))
                     .lineLimit(2)
             }
             .foregroundStyle(selectedRole == role ? .white : Color.tanInk)
             .frame(maxWidth: .infinity)
-            .frame(height: 136)
-            .padding(14)
+            .frame(height: compact ? 88 : 110)
+            .padding(compact ? 10 : 12)
             .background(selectedRole == role ? Color.tanPrimary : .white)
             .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
             .overlay {
@@ -193,11 +263,13 @@ struct LoginView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.18), value: selectedRole)
+        .accessibilityIdentifier(role == .visitor ? "login.role.visitor" : "login.role.stallOwner")
     }
 }
 
 struct HomeView: View {
     @EnvironmentObject private var store: ArchiveStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appFlipAngle = 0.0
     @State private var isSwitchingRole = false
 
@@ -255,6 +327,11 @@ struct HomeView: View {
 
     private func switchRole() {
         guard !isSwitchingRole else { return }
+        if reduceMotion {
+            let nextRole: AppRole = store.selectedRole == .visitor ? .stallOwner : .visitor
+            store.switchRole(to: nextRole)
+            return
+        }
         isSwitchingRole = true
 
         withAnimation(.easeIn(duration: 0.22)) {
@@ -265,7 +342,6 @@ struct HomeView: View {
             try? await Task.sleep(nanoseconds: 220_000_000)
             let nextRole: AppRole = store.selectedRole == .visitor ? .stallOwner : .visitor
             store.switchRole(to: nextRole)
-            store.selectedTab = .map
             appFlipAngle = -90
             withAnimation(.easeOut(duration: 0.24)) {
                 appFlipAngle = 0

@@ -8,6 +8,11 @@
 import SwiftUI
 import UIKit
 
+enum FeatureFlags {
+    /// The competition build preserves archival reference prices but does not present commerce flows.
+    static let commerceFeaturesEnabled = false
+}
+
 extension Color {
     static let tanPrimary = Color(hex: 0xF26A2E)
     static let tanInk = Color(hex: 0x33251E)

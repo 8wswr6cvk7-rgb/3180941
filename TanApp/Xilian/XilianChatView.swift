@@ -82,7 +82,7 @@ struct XilianChatView: View {
                             onOpenArchive?(selectedArchive)
                             dismiss()
                         } label: {
-                            Label("打开这份档案", systemImage: "doc.text.magnifyingglass")
+                            Label("在地图上查看", systemImage: "map.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
@@ -91,13 +91,13 @@ struct XilianChatView: View {
                 .padding(18)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: viewModel.messages.count) { _, _ in
+            .onChange(of: viewModel.messages.count) { _ in
                 guard let lastID = viewModel.messages.last?.id else { return }
                 withAnimation(.easeOut(duration: 0.24)) {
                     proxy.scrollTo(lastID, anchor: .bottom)
                 }
             }
-            .onChange(of: viewModel.isThinking) { _, isThinking in
+            .onChange(of: viewModel.isThinking) { isThinking in
                 guard isThinking else { return }
                 withAnimation(.easeOut(duration: 0.24)) {
                     proxy.scrollTo("xilian-thinking", anchor: .bottom)
@@ -239,6 +239,7 @@ struct XilianChatView: View {
                 .onSubmit {
                     viewModel.send()
                 }
+                .accessibilityIdentifier("xilian.input")
 
             Button {
                 viewModel.send()
@@ -253,6 +254,7 @@ struct XilianChatView: View {
             }
             .disabled(!viewModel.canSend)
             .accessibilityLabel("发送给昔涟")
+            .accessibilityIdentifier("xilian.send")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

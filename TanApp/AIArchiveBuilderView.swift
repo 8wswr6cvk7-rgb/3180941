@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AVFoundation
+import UIKit
 
 struct AIArchiveBuilderView: View {
     @EnvironmentObject private var store: ArchiveStore
@@ -16,14 +17,19 @@ struct AIArchiveBuilderView: View {
     var editingArchive: CityArchive? = nil
 
     @State private var messages: [BuilderMessage] = [
-        BuilderMessage(role: "AI Agent", text: "先告诉我：这个摊或手艺叫什么？做了多少年？最值得记录的工序是哪一步？")
+        BuilderMessage(role: "AI 建档助手", text: "先告诉我：这个摊或手艺叫什么？做了多少年？最值得记录的工序是哪一步？")
     ]
     @State private var input = ""
     @State private var isThinking = false
+    @State private var isSavingDraft = false
+    @State private var hasGeneratedDraft = false
     @State private var dialect: ArchiveDialect = .chengdu
     @State private var showExamplePrompt = true
+    @State private var pendingImages: [PendingImage] = []
     @State private var toastMessage: String?
     @StateObject private var speechReader = SpeechReader()
+    @StateObject private var speechController: SpeechRecognitionController
+    @State private var showMicrophoneSettingsAlert = false
     @State private var draft = AIArchiveDraft(
         name: "未命名档案",
         ownerName: "摊主",
@@ -35,6 +41,16 @@ struct AIArchiveBuilderView: View {
         craftProcess: ["采集口述", "整理工序", "等待用户反馈补档"]
     )
 
+    init(
+        editingArchive: CityArchive? = nil,
+        speechService: SpeechRecognitionService = DashScopeSpeechRecognitionService()
+    ) {
+        self.editingArchive = editingArchive
+        _speechController = StateObject(
+            wrappedValue: SpeechRecognitionController(service: speechService)
+        )
+    }
+
     var body: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
@@ -45,6 +61,7 @@ struct AIArchiveBuilderView: View {
                             examplePromptCard
                         }
                         ownerBanner
+                        archivePhotoCard
                         conversation
                         quickPromptChips
                         draftCard
@@ -66,24 +83,66 @@ struct AIArchiveBuilderView: View {
         .onAppear {
             if let editingArchive {
                 draft = AIArchiveDraft(archive: editingArchive)
+                hasGeneratedDraft = true
                 messages = [
-                    BuilderMessage(role: "AI Agent", text: "我已载入原档案。你可以直接说“把营业时间改成下午三点后”，或补充新的故事、路线、工序。")
+                    BuilderMessage(role: "AI 建档助手", text: "我已载入原档案。你可以直接说“把营业时间改成下午三点后”，或补充新的故事、路线、工序。")
                 ]
             }
             speakLatestAIQuestion()
+        }
+        .onChange(of: speechController.completion?.id) { _ in
+            guard let completion = speechController.completion else { return }
+            input = SpeechTranscriptMerger.merge(existing: input, transcript: completion.text)
+            speechController.consumeCompletion()
+        }
+        .onChange(of: speechController.failure) { failure in
+            showMicrophoneSettingsAlert = failure?.offersSettings == true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            speechController.cancel(preservingTranscript: true)
+        }
+        .onDisappear {
+            speechController.cancel()
+            speechReader.stop()
+        }
+        .alert("无法使用麦克风", isPresented: $showMicrophoneSettingsAlert) {
+            Button("取消", role: .cancel) {}
+            Button("前往设置") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+        } message: {
+            Text("请在系统设置中允许“摊”使用麦克风。你也可以取消并继续使用键盘输入。")
+        }
+    }
+
+    private var archivePhotoCard: some View {
+        Surface {
+            Text("摊位现场照片")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(Color.tanInk)
+            Text("照片会作为档案封面与补充材料保存；当前 AI 只根据你的文字整理档案。")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineSpacing(3)
+            ImageAttachmentPicker(
+                pendingImages: $pendingImages,
+                maximumSelectionCount: 1,
+                emptyPrompt: "可拍摄或从相册选择 1 张摊位照片"
+            )
         }
     }
 
     private var buildSteps: some View {
         Surface {
-            Text("说几句摊位故事，AI 会帮你整理成档案。")
+            Text("拍一张现场照片，再讲讲摊位故事；AI 会根据文字整理成档案。")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color.tanInk)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
-                ArchiveBuildStep(number: "1", title: "口述", isHighlighted: true)
+                ArchiveBuildStep(number: "1", title: "拍摄与口述", isHighlighted: !isThinking && !hasGeneratedDraft)
                 Rectangle()
                     .fill(Color.tanLine)
                     .frame(height: 2)
@@ -91,7 +150,7 @@ struct AIArchiveBuilderView: View {
                 Rectangle()
                     .fill(Color.tanLine)
                     .frame(height: 2)
-                ArchiveBuildStep(number: "3", title: "入库", isHighlighted: false)
+                ArchiveBuildStep(number: "3", title: "确认入库", isHighlighted: hasGeneratedDraft && !isThinking)
             }
             .frame(maxWidth: .infinity)
         }
@@ -121,7 +180,7 @@ struct AIArchiveBuilderView: View {
                 Button {
                     speakLatestAIQuestion()
                 } label: {
-                    Label("读问题", systemImage: "speaker.wave.2.fill")
+                    Label("普通话朗读", systemImage: "speaker.wave.2.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(Color.tanPrimary)
                         .padding(.horizontal, 11)
@@ -201,7 +260,7 @@ struct AIArchiveBuilderView: View {
                     .shadow(color: Color.tanInk.opacity(0.05), radius: 8, x: 0, y: 5)
                     if message.role != "摊户" {
                         Button {
-                            speechReader.speak(message.text, dialect: dialect)
+                            speechReader.speak(message.text)
                         } label: {
                             Image(systemName: "speaker.wave.2")
                                 .font(.system(size: 13, weight: .bold))
@@ -210,6 +269,7 @@ struct AIArchiveBuilderView: View {
                                 .background(.white)
                                 .clipShape(Circle())
                         }
+                        .accessibilityLabel("使用普通话朗读")
                         Spacer(minLength: 40)
                     }
                 }
@@ -254,7 +314,7 @@ struct AIArchiveBuilderView: View {
     }
 
     private var quickPrompts: [String] {
-        ["我卖什么？", "在哪出摊？", "做了多少年？", "有什么老顾客故事？", "价格大概多少？"]
+        ["我做什么手艺？", "常在哪出摊？", "做了多少年？", "有什么街坊故事？", "参考价格大概多少？"]
     }
 
     private var draftCard: some View {
@@ -296,55 +356,118 @@ struct AIArchiveBuilderView: View {
             Button {
                 saveCurrentDraft()
             } label: {
-                Text(editingArchive == nil ? "确认入库" : "保存修改")
+                Text(isSavingDraft ? "正在保存…" : (editingArchive == nil ? "确认入库" : "保存修改"))
             }
             .buttonStyle(PrimaryButtonStyle())
+            .disabled(isSavingDraft || isThinking || !hasGeneratedDraft)
         }
     }
 
     private var composer: some View {
-        HStack(spacing: 10) {
-            Menu {
-                ForEach(ArchiveDialect.allCases, id: \.self) { item in
-                    Button {
-                        dialect = item
-                        simulateDialectRecording()
-                    } label: {
-                        Label(item.title, systemImage: dialect == item ? "checkmark.circle.fill" : "mic.fill")
+        VStack(spacing: 9) {
+            HStack(spacing: 10) {
+                Menu {
+                    ForEach(ArchiveDialect.allCases, id: \.self) { item in
+                        Button {
+                            dialect = item
+                        } label: {
+                            Label(item.title, systemImage: dialect == item ? "checkmark.circle.fill" : "waveform")
+                        }
                     }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(dialect.title)
+                            .font(.system(size: 14, weight: .black))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(Color.tanPrimary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .background(Color.tanPrimary.opacity(0.12))
+                    .clipShape(Capsule())
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 19, weight: .bold))
-                    Text(dialect.title)
-                        .font(.system(size: 15, weight: .black))
+                .disabled(speechController.state.isBusy)
+                .accessibilityIdentifier("archive.dialect.selector")
+
+                Text(dialect.recognitionNote)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.tanInk.opacity(0.58))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    if speechController.isRecording || speechController.state == .connecting {
+                        speechController.stop()
+                    } else {
+                        speechController.start(dialect: dialect)
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: speechController.isRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 14, weight: .black))
+                        Text(speechController.isRecording ? "停止" : "开始口述")
+                            .font(.system(size: 12, weight: .black))
+                    }
+                    .foregroundStyle(speechController.isRecording ? .white : Color.tanPrimary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .background(speechController.isRecording ? Color.warningRed : Color.mutedOrange.opacity(0.62))
+                    .clipShape(Capsule())
                 }
-                .foregroundStyle(Color.tanPrimary)
-                .frame(width: 96, height: 46)
-                .background(Color.tanPrimary.opacity(0.12))
-                .clipShape(Capsule())
+                .disabled(
+                    isThinking
+                    || speechController.state == .requestingPermission
+                    || speechController.state == .finalizing
+                )
+                .accessibilityLabel(speechController.isRecording ? "停止语音输入" : "开始语音输入")
+                .accessibilityIdentifier("archive.speech.toggle")
             }
 
-            ChineseFriendlyTextField(placeholder: "回答 AI 的问题，或说“修改为...”", text: $input)
-                .padding(.horizontal, 14)
-                .frame(height: 46)
-                .frame(minWidth: 0, maxWidth: .infinity)
-                .background(Color.tanPaper)
-                .clipShape(Capsule())
-                .layoutPriority(1)
-            Button {
-                send()
-            } label: {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 17, weight: .black))
-                    .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color.tanPrimary.opacity(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isThinking ? 0.4 : 1))
-                    .clipShape(Circle())
-                    .shadow(color: Color.tanPrimary.opacity(0.2), radius: 10, x: 0, y: 6)
+            if speechController.state.isBusy
+                || speechController.state == .failed
+                || !speechController.liveTranscript.isEmpty {
+                speechRecognitionStatus
             }
-            .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isThinking)
+
+            HStack(spacing: 10) {
+                ChineseFriendlyTextField(placeholder: "回答 AI 的问题，或说“修改为...”", text: $input)
+                    .padding(.horizontal, 14)
+                    .frame(height: 46)
+                    .frame(minWidth: 0, maxWidth: .infinity)
+                    .background(Color.tanPaper)
+                    .clipShape(Capsule())
+                    .layoutPriority(1)
+                    .allowsHitTesting(!speechController.state.isBusy)
+                    .opacity(speechController.state.isBusy ? 0.68 : 1)
+
+                Button {
+                    send()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Color.tanPrimary.opacity(
+                                input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || isThinking
+                                || speechController.state.isBusy ? 0.4 : 1
+                            )
+                        )
+                        .clipShape(Circle())
+                        .shadow(color: Color.tanPrimary.opacity(0.2), radius: 10, x: 0, y: 6)
+                }
+                .disabled(
+                    input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || isThinking
+                    || speechController.state.isBusy
+                )
+                .accessibilityLabel("发送建档讲述")
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity)
@@ -356,9 +479,69 @@ struct AIArchiveBuilderView: View {
         }
     }
 
+    private var speechRecognitionStatus: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if speechController.state == .listening {
+                    Circle()
+                        .fill(Color.warningRed)
+                        .frame(width: 8, height: 8)
+                } else if speechController.state == .requestingPermission
+                            || speechController.state == .connecting
+                            || speechController.state == .finalizing {
+                    ProgressView()
+                        .scaleEffect(0.75)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.warningRed)
+                }
+
+                Text(speechController.statusText)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(
+                        speechController.state == .failed
+                        ? Color.warningRed
+                        : Color.tanInk.opacity(0.72)
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+
+                if speechController.failure?.offersSettings == true {
+                    Button("前往设置") {
+                        showMicrophoneSettingsAlert = true
+                    }
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(Color.tanPrimary)
+                }
+            }
+
+            if !speechController.liveTranscript.isEmpty {
+                Text(speechController.liveTranscript)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.tanInk)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("实时转写：\(speechController.liveTranscript)")
+            } else if speechController.state == .listening {
+                Text("请开始讲述，识别文字会实时出现在这里。")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.tanPaper)
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+        .accessibilityIdentifier("archive.speech.status")
+    }
+
     private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !speechController.state.isBusy else { return }
         messages.append(BuilderMessage(role: "摊户", text: text))
         input = ""
         isThinking = true
@@ -369,19 +552,26 @@ struct AIArchiveBuilderView: View {
     }
 
     private func saveCurrentDraft() {
-        if let editingArchive {
-            store.updateArchive(editingArchive, with: draft)
-            showToast("档案修改已保存", binding: $toastMessage)
-            Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 700_000_000)
-                dismiss()
-            }
-        } else {
-            showToast("档案已入库，可以在地图上看到它了", binding: $toastMessage, duration: 1.2)
-            let draftToSave = draft
-            Task { @MainActor in
+        guard !isSavingDraft else { return }
+        isSavingDraft = true
+        let image = pendingImages.first
+        Task {
+            do {
+                if let editingArchive {
+                    store.updateArchive(editingArchive, with: draft)
+                    if let image {
+                        try await store.addPhoto(to: editingArchive, caption: "摊主更新现场照片", pendingImage: image)
+                    }
+                    showToast("档案修改已保存", binding: $toastMessage)
+                } else {
+                    try await store.saveDraft(draft, coverImage: image)
+                    showToast("档案已入库，可以在地图上看到它了", binding: $toastMessage)
+                }
                 try? await Task.sleep(nanoseconds: 650_000_000)
-                store.saveDraft(draftToSave)
+                dismiss()
+            } catch {
+                showToast("图片保存失败，请重试或继续只提交文字档案。", binding: $toastMessage)
+                isSavingDraft = false
             }
         }
     }
@@ -398,8 +588,9 @@ struct AIArchiveBuilderView: View {
             appendAIMessage("千问已更新档案草稿。\(result.nextQuestion)")
         } catch {
             applyLocalAgentUpdate(from: text)
-            appendAIMessage("我先用本地 Agent 更新了草稿。网络或密钥不可用时不会影响演示；下一步请补充常出现的位置、是否带徒、以及最怕失传的细节。")
+            appendAIMessage("暂时无法连接，已根据当前讲述生成可继续修改的草稿。下一步可以补充常出现的位置、是否带徒，以及最怕失传的细节。")
         }
+        hasGeneratedDraft = true
         isThinking = false
     }
 
@@ -420,24 +611,20 @@ struct AIArchiveBuilderView: View {
             draft.name = first
         }
         draft.ownerName = store.user.name
-        draft.summary = "AI 已根据摊户口述整理：\(text)。后续会结合用户照片、评论点赞与高积分反馈继续修订。"
-        draft.craftProcess = ["口述采集", "工序拆解", "用户反馈补档", "云端同步"]
-    }
-
-    private func simulateDialectRecording() {
-        input = "\(dialect.sampleText)"
+        draft.summary = "根据摊户口述整理：\(text)。保存前仍可继续核对和修改。"
+        draft.craftProcess = ["口述采集", "信息梳理", "工序确认", "社区补档"]
     }
 
     private func appendAIMessage(_ text: String) {
-        messages.append(BuilderMessage(role: "AI Agent", text: text))
-        speechReader.speak(text, dialect: dialect)
+        messages.append(BuilderMessage(role: "AI 建档助手", text: text))
+        speechReader.speak(text)
     }
 
     private func speakLatestAIQuestion() {
-        guard let text = messages.last(where: { $0.role == "AI Agent" })?.text else {
+        guard let text = messages.last(where: { $0.role == "AI 建档助手" })?.text else {
             return
         }
-        speechReader.speak(text, dialect: dialect)
+        speechReader.speak(text)
     }
 }
 
@@ -545,20 +732,6 @@ private struct DraftAvatarView: View {
             Image(systemName: category.icon)
                 .font(.system(size: 25, weight: .bold))
                 .foregroundStyle(Color.tanPrimary)
-            VStack {
-                HStack {
-                    Spacer()
-                    Text("AI")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .background(Color.tanPrimary)
-                        .clipShape(Capsule())
-                }
-                Spacer()
-            }
-            .padding(5)
         }
         .frame(width: 58, height: 58)
         .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
@@ -566,7 +739,7 @@ private struct DraftAvatarView: View {
             RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
                 .stroke(Color.white.opacity(0.82))
         }
-        .accessibilityLabel("AI 根据档案类别生成的头像")
+        .accessibilityLabel("\(category.title)档案类别图标")
     }
 }
 
@@ -584,43 +757,19 @@ private struct FlowTags: View {
     }
 }
 
-private enum ArchiveDialect: String, CaseIterable {
-    case mandarin
-    case chengdu
-    case zigong
-
-    var title: String {
-        switch self {
-        case .mandarin:
-            return "普通话"
-        case .chengdu:
-            return "成都话"
-        case .zigong:
-            return "自贡话"
-        }
-    }
-
-    var sampleText: String {
-        switch self {
-        case .mandarin:
-            return "我这个摊做了二十多年，主要靠手工修补和老顾客口口相传。"
-        case .chengdu:
-            return "我这个摊摊摆了二十多年，老街坊都晓得，修鞋换拉链这些手艺还在坚持。"
-        case .zigong:
-            return "我这个摊摆了二十多年，修鞋换拉链这些活路都做得来，老街坊经常来找我。"
-        }
-    }
-}
-
 private final class SpeechReader: ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
 
-    func speak(_ text: String, dialect: ArchiveDialect) {
+    func speak(_ text: String) {
         synthesizer.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
-        utterance.rate = dialect == .mandarin ? 0.48 : 0.43
-        utterance.pitchMultiplier = dialect == .chengdu ? 0.92 : 1.0
+        utterance.rate = 0.48
+        utterance.pitchMultiplier = 1
         synthesizer.speak(utterance)
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
     }
 }

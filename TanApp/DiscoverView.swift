@@ -16,8 +16,6 @@ struct DiscoverView: View {
         store.searchArchives(query: query, category: selectedCategory)
     }
 
-    private let hotKeywords = ["小吃", "修补", "非遗", "消失预警", "玉林路"]
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -28,7 +26,7 @@ struct DiscoverView: View {
                 }
                 categoryTabs
 
-                Text("市井档案 + 老手艺 / 非遗")
+                Text("附近摊位与街巷记忆")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.tanInk)
 
@@ -36,10 +34,11 @@ struct DiscoverView: View {
                     EmptyStateView(text: "暂时没找到这个摊，换个关键词试试。", icon: "magnifyingglass")
                 } else {
                     ForEach(archives) { archive in
-                        NavigationLink(value: archive.id) {
+                        NavigationLink(value: ArchiveDetailRoute.top(archive.id)) {
                             ArchiveRow(archive: archive)
                         }
                         .buttonStyle(.plain)
+                        .frame(minHeight: 44)
                     }
                 }
             }
@@ -48,16 +47,16 @@ struct DiscoverView: View {
         .background(Color.tanPaper.ignoresSafeArea())
         .navigationTitle("发现")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: UUID.self) { id in
-            if let archive = store.archive(with: id) {
-                ArchiveDetailView(archive: archive)
+        .navigationDestination(for: ArchiveDetailRoute.self) { route in
+            if let archive = store.archive(with: route.archiveID) {
+                ArchiveDetailView(archive: archive, initialSection: route.initialSection)
             }
         }
     }
 
     private var recommendBanner: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("今日值得守护")
+            Text("今日城市记忆")
                 .font(.system(size: 13, weight: .black))
                 .foregroundStyle(Color.tanPrimary)
                 .padding(.horizontal, 10)
@@ -65,11 +64,11 @@ struct DiscoverView: View {
                 .background(.white.opacity(0.8))
                 .clipShape(Capsule())
 
-            Text("找一找还在街边的老手艺")
+            Text("发现仍在街巷发生的手艺")
                 .font(.system(size: 25, weight: .black))
                 .foregroundStyle(Color.tanInk)
 
-            Text("小吃、修补、非遗体验，都藏在城市角落里。")
+            Text("从一处摊位出发，认识手艺人、街巷故事与可能消失的城市记忆。")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.tanInk.opacity(0.68))
                 .lineSpacing(4)
@@ -110,13 +109,13 @@ struct DiscoverView: View {
 
     private var hotKeywordsView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("大家在找")
+            Text("从这些记忆开始")
                 .font(.system(size: 13, weight: .black))
                 .foregroundStyle(Color.tanInk.opacity(0.62))
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(hotKeywords, id: \.self) { keyword in
+                    ForEach(ArchiveStore.discoveryKeywords, id: \.self) { keyword in
                         Button {
                             query = keyword
                         } label: {
@@ -138,7 +137,8 @@ struct DiscoverView: View {
                     TagPill(text: "全部 \(store.archives.count)", isSelected: selectedCategory == nil)
                 }
                 .buttonStyle(.plain)
-                ForEach(ArchiveCategory.allCases, id: \.self) { category in
+                .frame(minHeight: 44)
+                ForEach(store.availableCategories, id: \.self) { category in
                     Button {
                         selectedCategory = category
                     } label: {
@@ -159,6 +159,7 @@ struct DiscoverView: View {
                         .shadow(color: selectedCategory == category ? Color.tanPrimary.opacity(0.14) : .clear, radius: 8, x: 0, y: 4)
                     }
                     .buttonStyle(.plain)
+                    .frame(minHeight: 44)
                 }
             }
         }

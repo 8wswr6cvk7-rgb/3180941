@@ -1,0 +1,33 @@
+《摊·URBAN ECHO》比赛演示 Seed 图片说明
+
+Seed 中的人物名称与故事使用比赛演示化名。以下照片为真实同类场景资料图，
+不表示照片中的人物、摊位或拍摄地点就是档案中的人物、摊位或活动地点。
+图片均保持原始画面内容，仅缩放、裁切展示并移除设备与定位元数据。
+
+1. seed_zhang_food.jpg / seed_zhang_status.jpg / seed_li_cover.jpg
+   “021 Sichuan-160811 21 (29657343570).jpg”
+   作者：Franco Pecchio
+   来源：Wikimedia Commons
+   许可：CC BY 2.0
+   https://commons.wikimedia.org/wiki/File:021_Sichuan-160811_21_(29657343570).jpg
+
+2. seed_zhang_cover.jpg / seed_zhang_process.jpg / seed_miandian_cover.jpg
+   “VM 5119 Gaoqiao Township breakfast youtiao stall.jpg”
+   作者：Vmenkov
+   来源：Wikimedia Commons
+   许可：CC BY-SA 3.0
+   https://commons.wikimedia.org/wiki/File:VM_5119_Gaoqiao_Township_breakfast_youtiao_stall.jpg
+
+3. seed_shuxiu_cover.jpg
+   “Sichuan Embroidery (9958397565).jpg”
+   作者：Gary Todd
+   来源：Wikimedia Commons
+   许可：CC0 1.0
+   https://commons.wikimedia.org/wiki/File:Sichuan_Embroidery_(9958397565).jpg
+
+4. seed_repair_cover.jpg
+   “Shoe repair shop at Nanzhan Xincun, Kunming (20210321172943).jpg”
+   作者：N509FZ
+   来源：Wikimedia Commons
+   许可：CC BY-SA 4.0
+   https://commons.wikimedia.org/wiki/File:Shoe_repair_shop_at_Nanzhan_Xincun,_Kunming_(20210321172943).jpg

@@ -70,19 +70,57 @@ struct RouteStop: Identifiable, Codable, Hashable {
     }
 }
 
+struct PhotoAttachment: Identifiable, Codable, Hashable {
+    let id: UUID
+    var localFilename: String
+    var thumbnailFilename: String
+    var bundledResourceName: String?
+    var remoteURL: URL?
+    var createdAt: Date
+    var caption: String?
+
+    init(
+        id: UUID = UUID(),
+        localFilename: String,
+        thumbnailFilename: String,
+        bundledResourceName: String? = nil,
+        remoteURL: URL? = nil,
+        createdAt: Date = .now,
+        caption: String? = nil
+    ) {
+        self.id = id
+        self.localFilename = localFilename
+        self.thumbnailFilename = thumbnailFilename
+        self.bundledResourceName = bundledResourceName
+        self.remoteURL = remoteURL
+        self.createdAt = createdAt
+        self.caption = caption
+    }
+}
+
 struct PhotoEntry: Identifiable, Codable, Hashable {
     let id: UUID
     var contributorName: String
     var caption: String
-    var imageData: Data?
+    var attachment: PhotoAttachment?
+    var createdAt: Date
     var likes: Int
     var likedByUserIDs: [UUID]
 
-    init(id: UUID = UUID(), contributorName: String, caption: String, imageData: Data? = nil, likes: Int, likedByUserIDs: [UUID] = []) {
+    init(
+        id: UUID = UUID(),
+        contributorName: String,
+        caption: String,
+        attachment: PhotoAttachment? = nil,
+        createdAt: Date = .now,
+        likes: Int,
+        likedByUserIDs: [UUID] = []
+    ) {
         self.id = id
         self.contributorName = contributorName
         self.caption = caption
-        self.imageData = imageData
+        self.attachment = attachment
+        self.createdAt = createdAt
         self.likes = likes
         self.likedByUserIDs = likedByUserIDs
     }
@@ -92,15 +130,74 @@ struct CommentEntry: Identifiable, Codable, Hashable {
     let id: UUID
     var contributorName: String
     var text: String
+    var imageAttachments: [PhotoAttachment]
+    var createdAt: Date
     var likes: Int
     var likedByUserIDs: [UUID]
 
-    init(id: UUID = UUID(), contributorName: String, text: String, likes: Int, likedByUserIDs: [UUID] = []) {
+    init(
+        id: UUID = UUID(),
+        contributorName: String,
+        text: String,
+        imageAttachments: [PhotoAttachment] = [],
+        createdAt: Date = .now,
+        likes: Int,
+        likedByUserIDs: [UUID] = []
+    ) {
         self.id = id
         self.contributorName = contributorName
         self.text = text
+        self.imageAttachments = Array(imageAttachments.prefix(3))
+        self.createdAt = createdAt
         self.likes = likes
         self.likedByUserIDs = likedByUserIDs
+    }
+}
+
+enum StallConfirmationResult: String, Codable, CaseIterable, Hashable {
+    case stillThere
+    case notSeen
+    case locationChanged
+
+    var title: String {
+        switch self {
+        case .stillThere: return "在原处看到该摊"
+        case .notSeen: return "暂未见到该摊"
+        case .locationChanged: return "摊位位置有变化"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .stillThere: return "checkmark.seal.fill"
+        case .notSeen: return "eye.slash.fill"
+        case .locationChanged: return "arrow.triangle.turn.up.right.diamond.fill"
+        }
+    }
+}
+
+struct StallStatusConfirmation: Identifiable, Codable, Hashable {
+    let id: UUID
+    var contributorName: String
+    var result: StallConfirmationResult
+    var clue: String
+    var attachment: PhotoAttachment?
+    var createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        contributorName: String,
+        result: StallConfirmationResult,
+        clue: String,
+        attachment: PhotoAttachment? = nil,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.contributorName = contributorName
+        self.result = result
+        self.clue = clue
+        self.attachment = attachment
+        self.createdAt = createdAt
     }
 }
 
@@ -119,6 +216,7 @@ struct CityArchive: Identifiable, Codable, Hashable {
     var historicalStops: [RouteStop]
     var photos: [PhotoEntry]
     var comments: [CommentEntry]
+    var statusConfirmations: [StallStatusConfirmation]
     var isUserCreated: Bool
 
     init(
@@ -136,6 +234,7 @@ struct CityArchive: Identifiable, Codable, Hashable {
         historicalStops: [RouteStop],
         photos: [PhotoEntry],
         comments: [CommentEntry],
+        statusConfirmations: [StallStatusConfirmation] = [],
         isUserCreated: Bool = false
     ) {
         self.id = id
@@ -152,6 +251,7 @@ struct CityArchive: Identifiable, Codable, Hashable {
         self.historicalStops = historicalStops
         self.photos = photos
         self.comments = comments
+        self.statusConfirmations = statusConfirmations
         self.isUserCreated = isUserCreated
     }
 }

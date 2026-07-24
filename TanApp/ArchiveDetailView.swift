@@ -6,8 +6,51 @@
 //
 
 import SwiftUI
-import PhotosUI
 import UIKit
+
+enum MetricIconOption: String, CaseIterable, Identifiable {
+    case friendly
+    case tools
+    case family
+    case camera
+    case star
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .friendly:
+            return "入门友好"
+        case .tools:
+            return "工具与难度"
+        case .family:
+            return "亲子与年龄"
+        case .camera:
+            return "拍照记录"
+        case .star:
+            return "综合评价"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .friendly:
+            return "hand.thumbsup.fill"
+        case .tools:
+            return "hammer.fill"
+        case .family:
+            return "figure.2.and.child.holdinghands"
+        case .camera:
+            return "camera.fill"
+        case .star:
+            return "star.fill"
+        }
+    }
+
+    static func option(for symbol: String) -> MetricIconOption? {
+        allCases.first { $0.symbol == symbol }
+    }
+}
 
 private struct DetailBookingDay: Identifiable, Codable, Hashable {
     var id = UUID()
@@ -107,7 +150,7 @@ private struct ArchiveDetailContent: Codable, Hashable {
             videoDuration: "短视频访谈 · 2 分 18 秒",
             certificationLevel: certificationLevel,
             verificationStatus: "社区核验中",
-            certificationNote: "认证证书、口述史和代表作品可继续由摊主或高积分市景侠补充。",
+            certificationNote: "认证证书、口述史和代表作品可继续由摊主或社区补档者补充。",
             experiences: experiences,
             products: [
                 HeritageProduct(title: representativeWork, price: archive.priceOrService, badge: "手工制作", cycle: "现货少量"),
@@ -156,24 +199,83 @@ private enum ArchiveDetailContentStore {
         guard let data = try? JSONEncoder().encode(content) else { return }
         UserDefaults.standard.set(data, forKey: keyPrefix + archive.id.uuidString)
     }
+
+    static func clearAll() {
+        UserDefaults.standard.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix(keyPrefix) }
+            .forEach { UserDefaults.standard.removeObject(forKey: $0) }
+    }
+}
+
+func clearArchiveDetailContentCache() {
+    ArchiveDetailContentStore.clearAll()
+}
+
+private enum CommunityDeletionTarget {
+    case photo(PhotoEntry)
+    case comment(CommentEntry)
+    case status(StallStatusConfirmation)
+
+    var title: String {
+        switch self {
+        case .photo:
+            return "删除这张档案影像？"
+        case .comment:
+            return "删除这条社区补档？"
+        case .status:
+            return "删除这条状态线索？"
+        }
+    }
+
+    var actionTitle: String {
+        switch self {
+        case .photo:
+            return "删除影像"
+        case .comment:
+            return "删除补档"
+        case .status:
+            return "删除线索"
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .photo:
+            return "影像及其本地文件将被清理，删除后无法恢复。"
+        case .comment:
+            return "补档正文和所附图片将被清理，删除后无法恢复。"
+        case .status:
+            return "状态线索和所附现场照片将被清理，删除后无法恢复。"
+        }
+    }
 }
 
 struct ArchiveDetailView: View {
     @EnvironmentObject private var store: ArchiveStore
     let archive: CityArchive
+    let initialSection: ArchiveDetailSection
+
+    private static let commentDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_Hans_CN")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        return formatter
+    }()
 
     @State private var commentText = ""
-    @State private var showPhotoInput = false
     @State private var showEditor = false
-    @State private var showCamera = false
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var selectedPhotoData: Data?
+    @State private var contributionImages: [PendingImage] = []
+    @State private var showStatusConfirmation = false
+    @State private var isPublishingContribution = false
+    @State private var pendingDeletion: CommunityDeletionTarget?
     @State private var toastMessage: String?
     @State private var selectedBookingDay = 0
     @State private var detailContent: ArchiveDetailContent
 
-    init(archive: CityArchive) {
+    init(archive: CityArchive, initialSection: ArchiveDetailSection = .top) {
         self.archive = archive
+        self.initialSection = initialSection
         _detailContent = State(initialValue: ArchiveDetailContentStore.load(for: archive))
     }
 
@@ -198,26 +300,38 @@ struct ArchiveDetailView: View {
                     XilianHintCard(archive: latestArchive)
                     heritageOverview
                     artisanStory
-                    experienceProjects
-                    productShowcase
+                    if FeatureFlags.commerceFeaturesEnabled {
+                        experienceProjects
+                        productShowcase
+                        reservationCalendar
+                    }
                     certificationAndLineage
                     activityRange
                     process
-                    reservationCalendar
                     craftMetrics
                     cultureKnowledge
                     reviewHighlights
-                    if !isOwnArchive {
-                        contributionActions(proxy: proxy)
-                    }
                     photoWall
                         .id("photos")
                     comments
-                        .id("comments")
+                        .id(ArchiveDetailSection.community)
+                        .accessibilityIdentifier("archive.community")
                 }
                 .padding(16)
-                .padding(.bottom, 20)
             }
+            .task {
+                guard initialSection == .community else { return }
+                await Task.yield()
+                proxy.scrollTo(ArchiveDetailSection.community, anchor: .top)
+            }
+        }
+        // The detail screen is hosted inside the app's TabView. Reserve a little
+        // extra scrollable space above its bottom safe area so the final status
+        // card never sits underneath the tab bar.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear
+                .frame(height: 24)
+                .allowsHitTesting(false)
         }
         .background(Color.tanPaper.ignoresSafeArea())
         .toastOverlay(toastMessage)
@@ -233,17 +347,26 @@ struct ArchiveDetailView: View {
                             Image(systemName: "pencil")
                                 .foregroundStyle(Color.tanPrimary)
                         }
+                        .accessibilityLabel("编辑档案")
                     }
 
-                    if !isOwnArchive {
+                    if store.selectedRole == .visitor {
                         Button {
                             let wasFavorite = store.favoriteIDs.contains(latestArchive.id)
                             store.toggleFavorite(latestArchive)
-                            showToast(wasFavorite ? "已取消收藏" : "已收藏", binding: $toastMessage)
+                            showToast(
+                                wasFavorite ? "已移出守护清单" : "已加入守护清单",
+                                binding: $toastMessage
+                            )
                         } label: {
                             Image(systemName: store.favoriteIDs.contains(latestArchive.id) ? "heart.fill" : "heart")
                                 .foregroundStyle(Color.tanPrimary)
                         }
+                        .accessibilityLabel(
+                            store.favoriteIDs.contains(latestArchive.id)
+                                ? "移出守护清单"
+                                : "加入守护清单"
+                        )
                     }
                 }
             }
@@ -256,102 +379,34 @@ struct ArchiveDetailView: View {
                     .environmentObject(store)
             }
         }
-        .sheet(isPresented: $showCamera) {
-            CameraPicker { image in
-                selectedPhotoData = image.jpegData(compressionQuality: 0.82)
-                showPhotoInput = true
-            }
+        .sheet(isPresented: $showStatusConfirmation) {
+            StallStatusConfirmationSheet(archive: latestArchive)
+                .environmentObject(store)
         }
-        .onChange(of: selectedPhotoItem) { _, item in
-            guard let item else { return }
-            Task {
-                if let data = try? await item.loadTransferable(type: Data.self) {
-                    await MainActor.run {
-                        selectedPhotoData = data
-                        showPhotoInput = true
-                    }
+        .confirmationDialog(
+            pendingDeletion?.title ?? "确认删除？",
+            isPresented: Binding(
+                get: { pendingDeletion != nil },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let pendingDeletion {
+                Button(pendingDeletion.actionTitle, role: .destructive) {
+                    performDeletion(pendingDeletion)
                 }
             }
-        }
-    }
-
-    private func contributionActions(proxy: ScrollViewProxy) -> some View {
-        Surface {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("我来补档")
-                    .font(.system(size: 18, weight: .black))
-                    .foregroundStyle(Color.tanInk)
-                Text("看到、听到、记得的线索，都能帮这份市井记忆更完整。")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(3)
+            Button("取消", role: .cancel) {
+                pendingDeletion = nil
             }
-
-            HStack(spacing: 10) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        showPhotoInput = true
-                        proxy.scrollTo("comments", anchor: .top)
-                    }
-                } label: {
-                    Label("补一张照片", systemImage: "camera.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.tanPrimary)
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        if commentText.isEmpty {
-                            commentText = "我记得："
-                        }
-                        proxy.scrollTo("comments", anchor: .top)
-                    }
-                } label: {
-                    Label("补一句故事", systemImage: "text.bubble.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-            .font(.system(size: 13, weight: .bold))
-
-            Button {
-                showToast("昔涟：伙伴，谢谢确认，这条街的记忆又亮了一点。", binding: $toastMessage)
-            } label: {
-                Label("这个摊还在吗？", systemImage: "checkmark.seal.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
+        } message: {
+            Text(pendingDeletion?.message ?? "删除后无法恢复。")
         }
     }
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ZStack {
-                LinearGradient(
-                    colors: [Color.tanPrimary.opacity(0.28), Color.heritageGreen.opacity(0.18), .white],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                VStack(spacing: 12) {
-                    Image(systemName: latestArchive.category.icon)
-                        .font(.system(size: 48, weight: .bold))
-                        .foregroundStyle(Color.tanPrimary)
-                        .frame(width: 96, height: 96)
-                        .background(.white.opacity(0.82))
-                        .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
-                        .shadow(color: Color.tanInk.opacity(0.08), radius: 14, x: 0, y: 8)
-                    Text(latestArchive.category.title)
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(Color.tanInk)
-                        .padding(.horizontal, 12)
-                        .frame(height: 32)
-                        .background(.white.opacity(0.78))
-                        .clipShape(Capsule())
-                }
-            }
+            ArchiveCoverView(archive: latestArchive, usesThumbnail: false)
             .frame(height: 220)
             .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
             .overlay {
@@ -400,7 +455,7 @@ struct ArchiveDetailView: View {
                         .shadow(color: Color.tanPrimary.opacity(0.24), radius: 10, x: 0, y: 6)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("内置导航")
+                .accessibilityLabel("在地图上查看档案位置")
             }
         }
     }
@@ -460,33 +515,27 @@ struct ArchiveDetailView: View {
                 HeritageFactPill(icon: "star.fill", text: detailContent.representativeWork)
             }
 
-            Button {
-                showToast("短视频访谈为原型演示内容", binding: $toastMessage)
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 42, height: 42)
-                        .background(Color.tanPrimary)
-                        .clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(detailContent.videoTitle)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color.tanInk)
-                        Text(detailContent.videoDuration)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(Color.tanInk.opacity(0.35))
+            HStack(spacing: 12) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.tanPrimary)
+                    .frame(width: 42, height: 42)
+                    .background(.white)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("口述资料待补充")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.tanInk)
+                    Text("可继续由摊主或社区补档者完善人物讲述")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
-                .padding(12)
-                .background(Color.mutedOrange.opacity(0.38))
-                .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+                Spacer()
             }
-            .buttonStyle(.plain)
+            .padding(12)
+            .background(Color.mutedOrange.opacity(0.38))
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -702,17 +751,15 @@ struct ArchiveDetailView: View {
         Surface {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("大家怎么评价")
+                    Text("社区留下的印象")
                         .font(.system(size: 18, weight: .black))
-                    Text("来自体验者的高频感受")
+                    Text("来自街坊与补档者的共同记录")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("4.8")
-                    .font(.system(size: 28, weight: .black))
-                    .foregroundStyle(Color.tanPrimary)
-                Image(systemName: "star.fill")
+                Image(systemName: "text.bubble.fill")
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.tanPrimary)
             }
 
@@ -722,16 +769,21 @@ struct ArchiveDetailView: View {
 
     private var photoWall: some View {
         Surface {
-            Text("街景照片")
-                .font(.system(size: 18, weight: .bold))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("档案影像")
+                    .font(.system(size: 18, weight: .bold))
+                Text("这里展示已归入档案的街景、工序与摊位照片。")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
 
             if latestArchive.photos.isEmpty {
-                EmptyStateView(text: "还没有街景照片，成为第一个补档的人。")
+                EmptyStateView(text: "还没有档案影像，摊主可以在编辑档案时继续补充。")
             } else {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
                     ForEach(latestArchive.photos) { photo in
                         VStack(alignment: .leading, spacing: 6) {
-                            UploadedPhotoPreview(imageData: photo.imageData, caption: photo.caption)
+                            LocalAttachmentPreview(attachment: photo.attachment, caption: photo.caption)
                                 .frame(height: 96)
                             Button {
                                 guard !store.hasLikedPhoto(photo) else { return }
@@ -744,9 +796,20 @@ struct ArchiveDetailView: View {
                                     .frame(height: 26)
                                     .background(Color.tanPaper)
                                     .clipShape(Capsule())
+                                    .frame(minHeight: 44, alignment: .leading)
                             }
                             .foregroundStyle(Color.tanPrimary)
                             .disabled(store.hasLikedPhoto(photo))
+                            if photo.contributorName == store.user.name {
+                                Button(role: .destructive) {
+                                    pendingDeletion = .photo(photo)
+                                } label: {
+                                Label("删除", systemImage: "trash")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .frame(minHeight: 44, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                 }
@@ -757,46 +820,15 @@ struct ArchiveDetailView: View {
     private var comments: some View {
         Surface {
             VStack(alignment: .leading, spacing: 5) {
-                Text("评论与照片补档")
+                Text("社区共建")
                     .font(.system(size: 18, weight: .bold))
-                Text(isOwnArchive ? "看看大家留下的故事、照片和建议。" : "一句话和一张照片，可以一起成为档案。")
+                Text(isOwnArchive ? "看看大家留下的故事、照片和状态线索。" : "写下故事、添加现场照片，或确认最近看到的状态。")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
 
             if canUploadPhoto {
                 VStack(alignment: .leading, spacing: 10) {
-                    if let selectedPhotoData {
-                        ZStack(alignment: .topTrailing) {
-                            UploadedPhotoPreview(
-                                imageData: selectedPhotoData,
-                                caption: commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "待发布现场照片" : commentText
-                            )
-                            .frame(height: 170)
-
-                            Button {
-                                self.selectedPhotoData = nil
-                                selectedPhotoItem = nil
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 12, weight: .black))
-                                    .foregroundStyle(Color.tanInk)
-                                    .frame(width: 30, height: 30)
-                                    .background(.white.opacity(0.9))
-                                    .clipShape(Circle())
-                            }
-                            .padding(8)
-                        }
-                    } else if showPhotoInput {
-                        Text("选择一张现场照片，再写下当时看到的故事。")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Color.tanPrimary)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.mutedOrange.opacity(0.45))
-                            .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
-                    }
-
                     ChineseFriendlyTextField(placeholder: "写下故事，也可以同时附一张照片", text: $commentText)
                         .padding(.horizontal, 12)
                         .frame(height: 42)
@@ -807,33 +839,21 @@ struct ArchiveDetailView: View {
                                 .stroke(Color.tanLine)
                         }
 
-                    HStack(spacing: 10) {
-                        Button {
-                            showPhotoInput = true
-                            if UIImagePickerController.isSourceTypeAvailable(.camera) {
-                                showCamera = true
-                            } else {
-                                selectedPhotoData = makeMockCameraPhotoData()
-                            }
-                        } label: {
-                            Label("拍照", systemImage: "camera.fill")
-                        }
-                        .buttonStyle(.bordered)
+                    ImageAttachmentPicker(
+                        pendingImages: $contributionImages,
+                        maximumSelectionCount: 3,
+                        emptyPrompt: "可拍照或从相册添加最多 3 张现场照片"
+                    )
 
-                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                            Label("相册", systemImage: "photo.fill.on.rectangle.fill")
-                        }
-                        .buttonStyle(.bordered)
-
-                        Spacer()
-
-                        Button("发布补档") {
-                            publishContribution()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.tanPrimary)
-                        .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedPhotoData == nil)
+                    Button(isPublishingContribution ? "正在发布…" : "发布补档") {
+                        publishContribution()
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.tanPrimary)
+                    .disabled(
+                        isPublishingContribution ||
+                        (commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && contributionImages.isEmpty)
+                    )
                     .font(.system(size: 13, weight: .bold))
                 }
             }
@@ -842,41 +862,70 @@ struct ArchiveDetailView: View {
                 EmptyStateView(text: "还没有人留下故事，写下你的第一句记忆。", icon: "text.bubble")
             } else {
                 ForEach(latestArchive.comments) { comment in
-                    HStack(alignment: .top, spacing: 10) {
-                        Circle()
-                            .fill(Color.tanPrimary.opacity(0.16))
-                            .frame(width: 38, height: 38)
-                            .overlay {
-                                Text(String(comment.contributorName.prefix(1)))
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundStyle(Color.tanPrimary)
-                            }
-                        VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .fill(Color.tanPrimary.opacity(0.16))
+                                .frame(width: 38, height: 38)
+                                .overlay {
+                                    Text(String(comment.contributorName.prefix(1)))
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundStyle(Color.tanPrimary)
+                                }
+
                             Text(comment.contributorName)
                                 .font(.system(size: 13, weight: .bold))
                                 .foregroundStyle(Color.tanInk)
+
+                            Spacer()
+
+                            Button {
+                                guard !store.hasLikedComment(comment) else { return }
+                                store.likeComment(comment, in: latestArchive)
+                                showToast("昔涟：伙伴，这份记忆被你点亮了。", binding: $toastMessage)
+                            } label: {
+                                Label("\(comment.likes)", systemImage: store.hasLikedComment(comment) ? "hand.thumbsup.fill" : "hand.thumbsup")
+                                    .padding(.horizontal, 9)
+                                    .frame(height: 30)
+                                    .background(Color.tanPaper)
+                                    .clipShape(Capsule())
+                                    .frame(minHeight: 44, alignment: .trailing)
+                            }
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(Color.tanPrimary)
+                            .disabled(store.hasLikedComment(comment))
+                        }
+
+                        if !comment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             Text(comment.text)
                                 .font(.system(size: 14))
                                 .foregroundStyle(.secondary)
                                 .lineSpacing(3)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
-                        Spacer()
-                        Button {
-                            guard !store.hasLikedComment(comment) else { return }
-                            store.likeComment(comment, in: latestArchive)
-                            showToast("昔涟：伙伴，这份记忆被你点亮了。", binding: $toastMessage)
-                        } label: {
-                            Label("\(comment.likes)", systemImage: store.hasLikedComment(comment) ? "hand.thumbsup.fill" : "hand.thumbsup")
-                                .padding(.horizontal, 9)
-                                .frame(height: 30)
-                                .background(Color.tanPaper)
-                                .clipShape(Capsule())
+
+                        if !comment.imageAttachments.isEmpty {
+                            CommentAttachmentGallery(attachments: comment.imageAttachments)
                         }
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.tanPrimary)
-                        .disabled(store.hasLikedComment(comment))
+
+                        Text(Self.commentDateFormatter.string(from: comment.createdAt))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+
+                        if comment.contributorName == store.user.name {
+                            Button(role: .destructive) {
+                                pendingDeletion = .comment(comment)
+                            } label: {
+                                Label("删除我的补档", systemImage: "trash")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .frame(minHeight: 44, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.white)
                     .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
                     .overlay {
@@ -884,6 +933,85 @@ struct ArchiveDetailView: View {
                             .stroke(Color.tanLine)
                     }
                 }
+            }
+
+            Divider()
+                .padding(.vertical, 2)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("社区状态线索")
+                    .font(.system(size: 18, weight: .bold))
+                Text("信息来自社区线索，不代表摊主实时营业承诺。")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if canUploadPhoto {
+                Button {
+                    showStatusConfirmation = true
+                } label: {
+                    Label("提交状态线索", systemImage: "checkmark.seal.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.tanPrimary)
+            }
+
+            if latestArchive.statusConfirmations.isEmpty {
+                EmptyStateView(text: "还没有状态线索，看到摊位时可以补充一条。", icon: "checkmark.seal")
+            } else {
+                ForEach(latestArchive.statusConfirmations) { confirmation in
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack {
+                            Label(confirmation.result.title, systemImage: confirmation.result.symbol)
+                                .font(.system(size: 14, weight: .black))
+                                .foregroundStyle(Color.tanPrimary)
+                            Spacer()
+                            Text(confirmation.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        if !confirmation.clue.isEmpty {
+                            Text(confirmation.clue)
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color.tanInk.opacity(0.8))
+                        }
+                        if let attachment = confirmation.attachment {
+                            Label("附带现场照片", systemImage: "camera.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color.heritageGreen)
+                            LocalAttachmentPreview(attachment: attachment, caption: attachment.caption ?? "现场照片")
+                                .frame(height: 130)
+                        }
+                        if confirmation.contributorName == store.user.name {
+                            Button(role: .destructive) {
+                                pendingDeletion = .status(confirmation)
+                            } label: {
+                                Label("删除我的线索", systemImage: "trash")
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.tanPaper)
+                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+                }
+            }
+        }
+    }
+
+    private func performDeletion(_ target: CommunityDeletionTarget) {
+        pendingDeletion = nil
+        Task {
+            switch target {
+            case .photo(let photo):
+                await store.deletePhoto(photo, in: latestArchive)
+            case .comment(let comment):
+                await store.deleteComment(comment, in: latestArchive)
+            case .status(let confirmation):
+                await store.deleteStatusConfirmation(confirmation, in: latestArchive)
             }
         }
     }
@@ -991,52 +1119,22 @@ struct ArchiveDetailView: View {
 
     private func publishContribution() {
         let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || selectedPhotoData != nil else { return }
-
-        if !text.isEmpty {
-            store.addComment(to: latestArchive, text: text)
+        guard !text.isEmpty || !contributionImages.isEmpty else { return }
+        isPublishingContribution = true
+        Task {
+            do {
+                try await store.addComment(to: latestArchive, text: text, pendingImages: contributionImages)
+                showToast(
+                    contributionImages.isEmpty ? "昔涟：伙伴，这句故事已经加入档案。" : "昔涟：伙伴，现场照片和线索已经加入档案。",
+                    binding: $toastMessage
+                )
+                commentText = ""
+                contributionImages = []
+            } catch {
+                showToast("图片保存失败，文字仍保留，可以重试。", binding: $toastMessage)
+            }
+            isPublishingContribution = false
         }
-        if let selectedPhotoData {
-            store.addPhoto(
-                to: latestArchive,
-                caption: text.isEmpty ? "用户补充现场照片" : text,
-                imageData: selectedPhotoData
-            )
-        }
-
-        let feedback: String
-        if selectedPhotoData == nil {
-            feedback = "昔涟：伙伴，这句故事已经加入档案。"
-        } else {
-            feedback = "昔涟：伙伴，这张照片让档案更完整啦。"
-        }
-        showToast(feedback, binding: $toastMessage)
-        commentText = ""
-        selectedPhotoData = nil
-        selectedPhotoItem = nil
-        showPhotoInput = false
-    }
-
-    private func makeMockCameraPhotoData() -> Data? {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 650))
-        let image = renderer.image { context in
-            UIColor(Color.tanPrimary.opacity(0.22)).setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 900, height: 650))
-
-            UIColor(Color.tanPaper).setFill()
-            UIBezierPath(roundedRect: CGRect(x: 70, y: 70, width: 760, height: 510), cornerRadius: 44).fill()
-
-            UIColor(Color.tanPrimary).setFill()
-            UIBezierPath(ovalIn: CGRect(x: 390, y: 225, width: 120, height: 120)).fill()
-
-            let title = "现场拍照模拟"
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 48, weight: .black),
-                .foregroundColor: UIColor(Color.tanInk)
-            ]
-            title.draw(at: CGPoint(x: 285, y: 375), withAttributes: attributes)
-        }
-        return image.jpegData(compressionQuality: 0.82)
     }
 
 }
@@ -1053,6 +1151,9 @@ private struct ArchiveManualEditView: View {
     @State private var historicalStops: [RouteStop]
     @State private var detailContent: ArchiveDetailContent
     @State private var reviewTagsText: String
+    @State private var pendingImages: [PendingImage] = []
+    @State private var isSaving = false
+    @State private var saveError: String?
 
     init(archive: CityArchive, detailContent: ArchiveDetailContent) {
         self.archive = archive
@@ -1069,6 +1170,21 @@ private struct ArchiveManualEditView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 editorHeader
+                editSection("档案现场照片") {
+                    Text("可拍照或从相册选择 1 张照片，保存后会加入档案影像。")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    ImageAttachmentPicker(
+                        pendingImages: $pendingImages,
+                        maximumSelectionCount: 1,
+                        emptyPrompt: "添加摊位、工具或作品照片"
+                    )
+                    if let saveError {
+                        Text(saveError)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.warningRed)
+                    }
+                }
                 editSection("基本信息") {
                     editField("档案名称", text: $draft.name)
                     editField("摊主姓名", text: $draft.ownerName)
@@ -1132,6 +1248,7 @@ private struct ArchiveManualEditView: View {
                     multilineEdit("认证补充说明", text: $detailContent.certificationNote)
                 }
 
+                if FeatureFlags.commerceFeaturesEnabled {
                 editSection("到店体验项目") {
                     ForEach(Array(detailContent.experiences.indices), id: \.self) { index in
                         editableItem(title: "体验 \(index + 1)") {
@@ -1165,7 +1282,9 @@ private struct ArchiveManualEditView: View {
                     }
                 }
 
-                editSection("常驻范围与上次路线") {
+                }
+
+                editSection("常驻范围与历史活动路线") {
                     Text("地点顺序就是地图上的历史路线顺序。经纬度保留原定位，名称和出现时间可直接修改。")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -1185,6 +1304,7 @@ private struct ArchiveManualEditView: View {
                     }
                 }
 
+                if FeatureFlags.commerceFeaturesEnabled {
                 editSection("预约体验") {
                     Text("可预约日期")
                         .font(.system(size: 13, weight: .bold))
@@ -1216,13 +1336,14 @@ private struct ArchiveManualEditView: View {
                         detailContent.bookingSlots.append(DetailBookingSlot(time: "10:00", remaining: "待确认", teacher: "老师带领"))
                     }
                 }
+                }
 
                 editSection("手艺难度与收获") {
                     ForEach(Array(detailContent.metrics.indices), id: \.self) { index in
                         editableItem(title: detailContent.metrics[index].title) {
                             editField("指标名称", text: $detailContent.metrics[index].title)
                             editField("展示结果", text: $detailContent.metrics[index].value)
-                            editField("SF Symbol 图标", text: $detailContent.metrics[index].icon)
+                            metricIconPicker(icon: $detailContent.metrics[index].icon)
                             Slider(value: $detailContent.metrics[index].level, in: 0...1)
                                 .tint(.heritageGreen)
                         } onDelete: {
@@ -1263,8 +1384,9 @@ private struct ArchiveManualEditView: View {
                 Button("取消") { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("保存") { save() }
+                Button(isSaving ? "保存中" : "保存") { save() }
                     .fontWeight(.bold)
+                    .disabled(isSaving)
             }
         }
     }
@@ -1315,6 +1437,39 @@ private struct ArchiveManualEditView: View {
             .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
     }
 
+    private func metricIconPicker(icon: Binding<String>) -> some View {
+        Menu {
+            ForEach(MetricIconOption.allCases) { option in
+                Button {
+                    icon.wrappedValue = option.symbol
+                } label: {
+                    Label(option.title, systemImage: option.symbol)
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                let selected = MetricIconOption.option(for: icon.wrappedValue)
+                Image(systemName: selected?.symbol ?? "ellipsis.circle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color.tanPrimary)
+                    .frame(width: 24)
+                Text(selected?.title ?? "其他图标")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.tanInk)
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            .background(Color.tanPaper)
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("选择指标图标")
+    }
+
     private func multilineEdit(_ title: String, text: Binding<String>, minHeight: CGFloat = 110) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -1363,6 +1518,7 @@ private struct ArchiveManualEditView: View {
     }
 
     private func save() {
+        saveError = nil
         draft.tags = tagsText
             .components(separatedBy: CharacterSet(charactersIn: "、,，"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -1375,14 +1531,26 @@ private struct ArchiveManualEditView: View {
             .components(separatedBy: CharacterSet(charactersIn: "、,，"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        store.updateArchive(
-            archive,
-            with: draft,
-            status: status,
-            historicalStops: historicalStops
-        )
-        ArchiveDetailContentStore.save(detailContent, for: archive)
-        dismiss()
+        isSaving = true
+        Task {
+            store.updateArchive(
+                archive,
+                with: draft,
+                status: status,
+                historicalStops: historicalStops
+            )
+            if let image = pendingImages.first {
+                do {
+                    try await store.addPhoto(to: archive, caption: "摊户更新现场照片", pendingImage: image)
+                } catch {
+                    saveError = "照片保存失败，请重试或移除图片后继续保存。"
+                    isSaving = false
+                    return
+                }
+            }
+            ArchiveDetailContentStore.save(detailContent, for: archive)
+            dismiss()
+        }
     }
 }
 
@@ -1643,19 +1811,89 @@ private struct CultureFact: Identifiable, Codable, Hashable {
     var detail: String
 }
 
-private struct UploadedPhotoPreview: View {
-    let imageData: Data?
-    let caption: String
+private struct CommentAttachmentGallery: View {
+    let attachments: [PhotoAttachment]
+
+    private var columns: [GridItem] {
+        if attachments.count == 1 {
+            return [GridItem(.flexible())]
+        }
+        return [GridItem(.flexible(), spacing: 8), GridItem(.flexible())]
+    }
 
     var body: some View {
-        Group {
-            if let imageData, let image = UIImage(data: imageData) {
+        LazyVGrid(columns: columns, spacing: 8) {
+            ForEach(attachments) { attachment in
+                VStack(alignment: .leading, spacing: 6) {
+                    LocalAttachmentImage(attachment: attachment)
+
+                    if let caption = attachment.caption,
+                       !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(caption)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct LocalAttachmentImage: View {
+    @EnvironmentObject private var store: ArchiveStore
+    let attachment: PhotoAttachment?
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
             } else {
                 Rectangle()
                     .fill(Color.gray.opacity(0.18))
+                    .overlay {
+                        Image(systemName: attachment == nil ? "photo" : "photo.badge.exclamationmark")
+                            .foregroundStyle(Color.tanInk.opacity(0.4))
+                    }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .task(id: attachment?.id) {
+            guard let attachment else {
+                image = nil
+                return
+            }
+            image = await store.image(for: attachment)
+        }
+    }
+}
+
+private struct LocalAttachmentPreview: View {
+    @EnvironmentObject private var store: ArchiveStore
+    let attachment: PhotoAttachment?
+    let caption: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.18))
+                    .overlay {
+                        Image(systemName: attachment == nil ? "photo" : "photo.badge.exclamationmark")
+                            .foregroundStyle(Color.tanInk.opacity(0.4))
+                    }
             }
         }
         .overlay(alignment: .bottomLeading) {
@@ -1668,42 +1906,94 @@ private struct UploadedPhotoPreview: View {
                 .background(.white.opacity(0.72))
         }
         .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .task(id: attachment?.id) {
+            guard let attachment else {
+                image = nil
+                return
+            }
+            image = await store.image(for: attachment)
+        }
     }
 }
 
-private struct CameraPicker: UIViewControllerRepresentable {
+private struct StallStatusConfirmationSheet: View {
+    @EnvironmentObject private var store: ArchiveStore
     @Environment(\.dismiss) private var dismiss
-    let onImagePicked: (UIImage) -> Void
+    let archive: CityArchive
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate = context.coordinator
-        return picker
-    }
+    @State private var result: StallConfirmationResult = .stillThere
+    @State private var clue = ""
+    @State private var pendingImages: [PendingImage] = []
+    @State private var isSubmitting = false
+    @State private var errorMessage: String?
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("提交社区状态线索")
+                        .font(.system(size: 22, weight: .black))
+                    Text("线索仅用于补充档案，不代表实时营业承诺。")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
+                    Picker("你看到的情况", selection: $result) {
+                        ForEach(StallConfirmationResult.allCases, id: \.self) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.menu)
 
-    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
-        let parent: CameraPicker
+                    TextField("写下时间、位置或你看到的细节（可选）", text: $clue, axis: .vertical)
+                        .lineLimit(2...4)
+                        .padding(12)
+                        .background(Color.tanPaper)
+                        .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
 
-        init(parent: CameraPicker) {
-            self.parent = parent
-        }
+                    ImageAttachmentPicker(
+                        pendingImages: $pendingImages,
+                        maximumSelectionCount: 1,
+                        emptyPrompt: "可附 1 张现场照片"
+                    )
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage {
-                parent.onImagePicked(image)
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.warningRed)
+                    }
+                }
+                .padding(16)
             }
-            parent.dismiss()
+            .background(Color.tanPaper.ignoresSafeArea())
+            .navigationTitle("状态确认")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSubmitting ? "提交中" : "提交") { submit() }
+                        .disabled(isSubmitting)
+                }
+            }
         }
+    }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            parent.dismiss()
+    private func submit() {
+        isSubmitting = true
+        Task {
+            do {
+                try await store.addStatusConfirmation(
+                    to: archive,
+                    result: result,
+                    clue: clue.trimmingCharacters(in: .whitespacesAndNewlines),
+                    pendingImage: pendingImages.first
+                )
+                dismiss()
+            } catch {
+                errorMessage = "图片保存失败，请重试或去掉照片后继续提交。"
+                isSubmitting = false
+            }
         }
     }
 }

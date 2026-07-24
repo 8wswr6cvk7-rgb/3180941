@@ -18,7 +18,7 @@ enum MockArchiveData {
             points = [(30.660897,104.0672),(30.660735,104.058107),(30.656885,104.058195),(30.656887,104.057057),(30.657395,104.057141),(30.658016,104.057294),(30.656887,104.057057),(30.656883,104.058401),(30.658742,104.058422),(30.658853,104.064737),(30.659042,104.064987),(30.659232,104.065025),(30.6607,104.064977),(30.660801,104.068598),(30.664626,104.068329),(30.667669,104.068241),(30.667676,104.069025),(30.668072,104.069024),(30.668226,104.068876)]
         case "李爷爷三大炮":
             points = [(30.666194,104.059974),(30.669322,104.059786),(30.669426,104.063161),(30.669471,104.068224),(30.669457,104.068986),(30.66936,104.069285),(30.66914,104.069634),(30.668987,104.070009),(30.669171,104.069886),(30.669516,104.069899),(30.670631,104.070649),(30.670685,104.070538),(30.669782,104.069893),(30.669593,104.069449),(30.66956,104.069116),(30.669509,104.063032),(30.665951,104.063146),(30.665945,104.062496)]
-        case "青羊宫糖画转盘":
+        case "青羊宫油炸面点摊":
             points = [(30.665567,104.049956),(30.665237,104.049764),(30.665757,104.048547),(30.664273,104.047744),(30.664057,104.047412),(30.664288,104.046828),(30.665992,104.04334),(30.66591,104.043288),(30.664111,104.046935),(30.663411,104.048934),(30.663279,104.049405),(30.662975,104.049307),(30.66259,104.049093),(30.662461,104.048887)]
         case "蜀绣小铺":
             points = [(30.652727,104.075145),(30.653041,104.074579),(30.653405,104.074939),(30.654658,104.075879),(30.653625,104.078054),(30.651479,104.082749),(30.651606,104.0828),(30.653233,104.0793),(30.653643,104.079535),(30.654561,104.080036),(30.655057,104.078949),(30.653625,104.078054),(30.652176,104.081225),(30.650171,104.079882),(30.650644,104.07891)]
@@ -49,75 +49,98 @@ enum MockArchiveData {
             name: "张大爷糖油果子",
             ownerName: "张大爷",
             category: .snack,
-            tags: ["手工小吃", "高消失风险", "时段限定"],
+            tags: ["手工小吃", "高消失风险", "演示化名"],
             priceOrService: "¥8/份",
             currentLocation: CoordinatePoint(latitude: 30.6609, longitude: 104.0672),
             status: .open,
             yearsActive: 18,
-            summary: "东华门街口的现炸糖油果子，张大爷每天清晨出摊，火候和糖浆比例都是街坊记忆。",
+            summary: "比赛演示以化名记录：东华门街口的现炸糖油果子，火候和糖浆比例承载着街坊记忆。配图为同类真实场景资料图。",
             craftProcess: ["糯米团醒发", "小锅现炸", "红糖浆挂亮", "撒芝麻出锅"],
             historicalStops: stops("东华门街口", "人民公园北门", "文殊院巷口"),
-            photos: photos("刚出锅的一盘还冒热气", "糖浆颜色很漂亮"),
-            comments: comments("早上八点最好吃，外壳还是脆的。", "这个档案应该保留，小时候就吃过。")
+            photos: [
+                seedPhoto("seed_zhang_cover.jpg", caption: "中国传统油炸面点制作资料图（非档案人物现场）", likes: 18),
+                seedPhoto("seed_zhang_process.jpg", caption: "油炸面点制作台资料图，用于展示同类手艺场景", likes: 14),
+                seedPhoto("seed_zhang_food.jpg", caption: "中国街头饮食资料图（非东华门现场）", likes: 11)
+            ],
+            comments: comments("早上八点最好吃，外壳还是脆的。", "这个档案应该保留，小时候就吃过。"),
+            statusConfirmations: [
+                StallStatusConfirmation(
+                    contributorName: "市景侠",
+                    result: .stillThere,
+                    clue: "演示社区线索：傍晚在东华门街口看到摊位正在制作糖油果子。",
+                    attachment: seedAttachment(
+                        "seed_zhang_status.jpg",
+                        caption: "同类街头小吃状态资料图（非当日现场）"
+                    )
+                )
+            ]
         ),
         CityArchive(
             name: "李爷爷三大炮",
             ownerName: "李爷爷",
             category: .snack,
-            tags: ["巴蜀味档案", "高消失风险"],
+            tags: ["巴蜀味档案", "高消失风险", "演示化名"],
             priceOrService: "¥10/份",
             currentLocation: CoordinatePoint(latitude: 30.6662, longitude: 104.0605),
             status: .atRisk,
             yearsActive: 31,
-            summary: "铜盘和糯米团子的声音曾经是文殊院外的招牌，最近一个月出摊频率明显变少。",
+            summary: "比赛演示以化名记录：铜盘与糯米团子的声音曾是文殊院外的街巷记忆，近期社区线索明显减少。配图为同类街头摊位资料图。",
             craftProcess: ["糯米捶打", "抛入铜盘", "裹黄豆粉", "淋红糖水"],
             historicalStops: stops("文殊院外", "草市街口", "骡马市地铁口"),
-            photos: photos("铜盘声音很有辨识度", "摊车已经有些旧了"),
+            photos: [
+                seedPhoto("seed_li_cover.jpg", caption: "中国街头摊位资料图（非档案人物现场）", likes: 16)
+            ],
             comments: comments("上次见到是上个月周六下午。", "希望有人能补一段口述故事。")
         ),
         CityArchive(
-            name: "青羊宫糖画转盘",
-            ownerName: "唐师傅",
-            category: .heritageCraft,
-            tags: ["非遗档案", "可体验", "传承人"],
-            priceOrService: "¥15/次",
+            name: "青羊宫油炸面点摊",
+            ownerName: "周师傅",
+            category: .snack,
+            tags: ["街头面点", "工序记录", "演示化名"],
+            priceOrService: "参考价格 ¥6/份",
             currentLocation: CoordinatePoint(latitude: 30.6659, longitude: 104.0504),
             status: .open,
-            yearsActive: 26,
-            summary: "转盘决定图案，铜勺画出龙凤花鸟。孩子参与体验，作品本身就是活档案。",
-            craftProcess: ["熬糖", "转盘抽样", "铜勺勾线", "竹签定型"],
+            yearsActive: 22,
+            summary: "比赛演示以化名记录：从醒面、拉条到下锅定型，简单的油炸面点也保留着街坊熟悉的早餐手艺。配图为真实同类制作场景资料图。",
+            craftProcess: ["和面醒发", "拉条整形", "油锅定型", "沥油出锅"],
             historicalStops: stops("青羊宫门口", "文化公园", "琴台路"),
-            photos: photos("今天画到了龙", "糖线很细"),
-            comments: comments("特别适合做图案谱。", "师傅说春节会画生肖限定。")
+            photos: [
+                seedPhoto("seed_miandian_cover.jpg", caption: "传统油炸面点制作资料图（非档案人物现场）", likes: 19)
+            ],
+            comments: comments("炸制时间和油温很值得记录。", "希望补一段清晨出摊的口述故事。")
         ),
         CityArchive(
             name: "蜀绣小铺",
             ownerName: "周嬢嬢",
             category: .heritageCraft,
-            tags: ["非遗档案", "传承人", "可体验"],
+            tags: ["非遗档案", "蜀绣资料", "演示化名"],
             priceOrService: "绣片 ¥38 起",
             currentLocation: CoordinatePoint(latitude: 30.6528, longitude: 104.0752),
             status: .closed,
             yearsActive: 14,
-            summary: "小铺现场绣熊猫、芙蓉和锦鲤，适合记录针法、纹样和带徒故事。",
+            summary: "比赛演示以化名记录：小铺以熊猫、芙蓉和锦鲤纹样为线索，持续记录针法与传承故事。封面采用四川博物院蜀绣实物资料图。",
             craftProcess: ["描样", "配线", "走针", "装框"],
             historicalStops: stops("镋钯街", "太古里侧巷", "合江亭"),
-            photos: photos("熊猫绣片很细", "线色一整盒"),
+            photos: [
+                seedPhoto("seed_shuxiu_cover.jpg", caption: "四川博物院蜀绣实物资料图（CC0）", likes: 23)
+            ],
             comments: comments("可以补拍一段针法视频。", "游客很多，但真正懂工序的人不多。")
         ),
         CityArchive(
             name: "老赵补鞋换拉链",
             ownerName: "赵师傅",
             category: .oldTrade,
-            tags: ["老行当", "高消失风险", "服务清单"],
+            tags: ["老行当", "高消失风险", "演示化名"],
             priceOrService: "补鞋 ¥12 起",
             currentLocation: CoordinatePoint(latitude: 30.6503, longitude: 104.0642),
             status: .open,
             yearsActive: 23,
-            summary: "补鞋、换拉链、缝包带都能做。老社区还需要这门手艺，但年轻人很少接班。",
+            summary: "比赛演示以化名记录：补鞋、换拉链与缝包带仍服务着老社区，但愿意接班的人越来越少。封面为中国修鞋铺同类手艺资料图。",
             craftProcess: ["看磨损", "选胶和线", "压合定型", "边缘修整"],
             historicalStops: stops("红星路小区口", "春熙路背街", "东大街菜市"),
-            photos: photos("修好了一双旧皮鞋", "工具箱很有年代感"),
+            photos: [
+                seedPhoto("seed_repair_cover.jpg", caption: "中国修鞋铺同类手艺资料图（非档案人物现场）", likes: 21)
+            ],
             comments: comments("这个应该加入消失预警样板。", "修包带很快，价格也清楚。")
         ),
         CityArchive(
@@ -167,6 +190,9 @@ enum MockArchiveData {
         )
     ]
 
+    /// The only first-install data source used by the competition demo.
+    static let competitionSeedArchives: [CityArchive] = Array(archives.prefix(5))
+
     private static func stops(_ a: String, _ b: String, _ c: String) -> [RouteStop] {
         [
             RouteStop(title: a, appearedAt: "常驻点", coordinate: coordinate(for: a)),
@@ -209,6 +235,31 @@ enum MockArchiveData {
             PhotoEntry(contributorName: "阿棠", caption: first, likes: 18),
             PhotoEntry(contributorName: "小周", caption: second, likes: 11)
         ]
+    }
+
+    private static func seedPhoto(
+        _ resourceName: String,
+        caption: String,
+        likes: Int
+    ) -> PhotoEntry {
+        PhotoEntry(
+            contributorName: "资料补档",
+            caption: caption,
+            attachment: seedAttachment(resourceName, caption: caption),
+            likes: likes
+        )
+    }
+
+    private static func seedAttachment(
+        _ resourceName: String,
+        caption: String
+    ) -> PhotoAttachment {
+        PhotoAttachment(
+            localFilename: "",
+            thumbnailFilename: "",
+            bundledResourceName: resourceName,
+            caption: caption
+        )
     }
 
     private static func comments(_ first: String, _ second: String) -> [CommentEntry] {

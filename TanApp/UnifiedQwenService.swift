@@ -15,8 +15,8 @@ final class UnifiedQwenService {
         userPrompt: String,
         temperature: Double = 0.7
     ) async throws -> String {
-        let secrets = LocalQwenSecrets.load()
-        guard let apiKey = secrets.apiKey, !apiKey.isEmpty else {
+        let configuration = LocalDashScopeConfiguration.load()
+        guard let apiKey = configuration.apiKey, !apiKey.isEmpty else {
             throw UnifiedQwenServiceError.missingAPIKey
         }
 
@@ -27,7 +27,7 @@ final class UnifiedQwenService {
         request.timeoutInterval = 20
         request.httpBody = try JSONEncoder().encode(
             QwenChatRequest(
-                model: secrets.model,
+                model: configuration.qwenModelName,
                 messages: [
                     QwenChatMessage(role: "system", content: systemPrompt),
                     QwenChatMessage(role: "user", content: userPrompt)
@@ -77,26 +77,36 @@ private struct QwenChatResponse: Decodable {
     }
 }
 
-private struct LocalQwenSecrets: Decodable {
+struct LocalDashScopeConfiguration: Decodable {
     var dashscopeAPIKey: String?
     var qwenModel: String?
+    var funASRModel: String?
 
     var apiKey: String? {
         dashscopeAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    var model: String {
+    var qwenModelName: String {
         let value = qwenModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? "qwen-plus" : value
     }
 
-    static func load() -> LocalQwenSecrets {
+    var asrModel: String {
+        let value = funASRModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "fun-asr-realtime" : value
+    }
+
+    static func load() -> LocalDashScopeConfiguration {
         guard
             let url = Bundle.main.url(forResource: "LocalSecrets", withExtension: "json"),
             let data = try? Data(contentsOf: url),
-            let secrets = try? JSONDecoder().decode(LocalQwenSecrets.self, from: data)
+            let secrets = try? JSONDecoder().decode(LocalDashScopeConfiguration.self, from: data)
         else {
-            return LocalQwenSecrets(dashscopeAPIKey: nil, qwenModel: "qwen-plus")
+            return LocalDashScopeConfiguration(
+                dashscopeAPIKey: nil,
+                qwenModel: "qwen-plus",
+                funASRModel: "fun-asr-realtime"
+            )
         }
         return secrets
     }

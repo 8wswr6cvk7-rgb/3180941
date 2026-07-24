@@ -8,42 +8,76 @@
 import SwiftUI
 import UIKit
 
+enum ArchiveDetailSection: Hashable {
+    case top
+    case community
+}
+
+struct ArchiveDetailRoute: Hashable {
+    let archiveID: UUID
+    let initialSection: ArchiveDetailSection
+
+    static func top(_ archiveID: UUID) -> ArchiveDetailRoute {
+        ArchiveDetailRoute(archiveID: archiveID, initialSection: .top)
+    }
+
+    static func community(_ archiveID: UUID) -> ArchiveDetailRoute {
+        ArchiveDetailRoute(archiveID: archiveID, initialSection: .community)
+    }
+}
+
 struct ArchiveAvatarView: View {
     let archive: CityArchive
     var size: CGFloat = 66
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [archive.status.tint.opacity(0.24), Color.tanPrimary.opacity(0.16), .white],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Image(systemName: archive.category.icon)
-                .font(.system(size: size * 0.38, weight: .bold))
-                .foregroundStyle(archive.status.tint)
-            VStack {
-                HStack {
-                    Spacer()
-                    Text("AI")
-                        .font(.system(size: max(8, size * 0.13), weight: .black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 3)
-                        .background(Color.tanPrimary)
-                        .clipShape(Capsule())
-                }
-                Spacer()
-            }
-            .padding(6)
-        }
+        ArchiveCoverView(archive: archive, usesThumbnail: true)
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
                 .stroke(Color.white.opacity(0.82))
         }
-        .accessibilityLabel("根据档案内容生成的 \(archive.category.title) 头像")
+        .accessibilityLabel("\(archive.name) 档案封面")
+    }
+}
+
+struct ArchiveCoverView: View {
+    @EnvironmentObject private var store: ArchiveStore
+    let archive: CityArchive
+    var usesThumbnail = false
+
+    @State private var image: UIImage?
+
+    private var coverAttachment: PhotoAttachment? {
+        archive.photos.compactMap(\.attachment).first
+    }
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [archive.status.tint.opacity(0.24), Color.tanPrimary.opacity(0.16), .white],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Image(systemName: archive.category.icon)
+                    .font(.system(size: 38, weight: .bold))
+                    .foregroundStyle(archive.status.tint)
+            }
+        }
+        .clipped()
+        .task(id: coverAttachment?.id) {
+            guard let coverAttachment else {
+                image = nil
+                return
+            }
+            image = await store.image(for: coverAttachment, thumbnail: usesThumbnail)
+        }
     }
 }
 
@@ -147,10 +181,12 @@ struct ToastView: View {
             .clipShape(Capsule())
             .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 8)
             .padding(.horizontal, 18)
+            .accessibilityAddTraits(.isStaticText)
     }
 }
 
 struct ToastOverlayModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: String?
 
     func body(content: Content) -> some View {
@@ -159,7 +195,7 @@ struct ToastOverlayModifier: ViewModifier {
                 if let message {
                     ToastView(message: message)
                         .padding(.top, 12)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                         .zIndex(20)
                 }
             }
@@ -193,10 +229,11 @@ extension View {
 }
 
 @MainActor
-func showToast(_ message: String, binding: Binding<String?>, duration: Double = 1.5) {
+func showToast(_ message: String, binding: Binding<String?>, duration: Double = 2.5) {
     withAnimation(.easeInOut(duration: 0.18)) {
         binding.wrappedValue = message
     }
+    UIAccessibility.post(notification: .announcement, argument: message)
     Task { @MainActor in
         let nanoseconds = UInt64(duration * 1_000_000_000)
         try? await Task.sleep(nanoseconds: nanoseconds)
@@ -214,7 +251,7 @@ struct ChineseFriendlyTextField: UIViewRepresentable {
     var font: UIFont = .systemFont(ofSize: 15, weight: .semibold)
 
     func makeUIView(context: Context) -> UITextField {
-        let textField = ChinesePreferredUITextField()
+        let textField = UITextField()
         textField.placeholder = placeholder
         textField.font = font
         textField.textColor = UIColor(Color.tanInk)
@@ -253,20 +290,5 @@ struct ChineseFriendlyTextField: UIViewRepresentable {
         @objc func textChanged(_ sender: UITextField) {
             text = sender.text ?? ""
         }
-    }
-}
-
-private final class ChinesePreferredUITextField: UITextField {
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: super.intrinsicContentSize.height)
-    }
-
-    override var textInputMode: UITextInputMode? {
-        UITextInputMode.activeInputModes.first { mode in
-            guard let language = mode.primaryLanguage else {
-                return false
-            }
-            return language == "zh-Hans" || language.hasPrefix("zh")
-        } ?? super.textInputMode
     }
 }

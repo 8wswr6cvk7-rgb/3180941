@@ -1,4 +1,22 @@
 TanApp/LocalSecrets.json
 TanApp/LocalSecrets.swift
+
+# Xcode user-specific state
 *.xcuserstate
+**/xcuserdata/
+
+# Build products and local tooling
 DerivedData/
+DerivedData*/
+build/
+.docgen-venv/
+output/
+
+# Generated competition artifacts kept outside the source repository
+DocumentAssets/
+/*.pdf
+/*.png
+/*.html
+
+# macOS
+.DS_Store
