@@ -1,5 +1,13 @@
-TanApp/LocalSecrets.json
-TanApp/LocalSecrets.swift
+# Local DashScope credentials (never commit real values)
+TanApp/LocalSecrets*.json
+TanApp/LocalSecrets*.swift
+!TanApp/LocalSecrets.example.json
+*.env
+*.env.*
+!.env.example
+*.pem
+*.p12
+*.mobileprovision
 
 # Xcode user-specific state
 *.xcuserstate

@@ -80,6 +80,7 @@ private struct QwenChatResponse: Decodable {
 struct LocalDashScopeConfiguration: Decodable {
     var dashscopeAPIKey: String?
     var qwenModel: String?
+    var qwenVisionModel: String?
     var funASRModel: String?
 
     var apiKey: String? {
@@ -89,6 +90,11 @@ struct LocalDashScopeConfiguration: Decodable {
     var qwenModelName: String {
         let value = qwenModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return value.isEmpty ? "qwen-plus" : value
+    }
+
+    var visionModelName: String {
+        let value = qwenVisionModel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "qwen-vl-plus" : value
     }
 
     var asrModel: String {

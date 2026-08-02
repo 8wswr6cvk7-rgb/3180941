@@ -70,6 +70,11 @@ struct RouteStop: Identifiable, Codable, Hashable {
     }
 }
 
+enum AttachmentMediaType: String, Codable, Hashable {
+    case image
+    case video
+}
+
 struct PhotoAttachment: Identifiable, Codable, Hashable {
     let id: UUID
     var localFilename: String
@@ -78,6 +83,14 @@ struct PhotoAttachment: Identifiable, Codable, Hashable {
     var remoteURL: URL?
     var createdAt: Date
     var caption: String?
+    /// Optional so snapshots created before video support continue to decode.
+    /// A missing value always represents an image.
+    var mediaType: AttachmentMediaType?
+    var videoDuration: TimeInterval?
+
+    var resolvedMediaType: AttachmentMediaType {
+        mediaType ?? .image
+    }
 
     init(
         id: UUID = UUID(),
@@ -86,7 +99,9 @@ struct PhotoAttachment: Identifiable, Codable, Hashable {
         bundledResourceName: String? = nil,
         remoteURL: URL? = nil,
         createdAt: Date = .now,
-        caption: String? = nil
+        caption: String? = nil,
+        mediaType: AttachmentMediaType? = nil,
+        videoDuration: TimeInterval? = nil
     ) {
         self.id = id
         self.localFilename = localFilename
@@ -95,6 +110,8 @@ struct PhotoAttachment: Identifiable, Codable, Hashable {
         self.remoteURL = remoteURL
         self.createdAt = createdAt
         self.caption = caption
+        self.mediaType = mediaType
+        self.videoDuration = videoDuration
     }
 }
 
@@ -256,12 +273,132 @@ struct CityArchive: Identifiable, Codable, Hashable {
     }
 }
 
+enum ArchiveAttentionLevel: Equatable {
+    case stable
+    case watch
+    case atRisk
+    case insufficientEvidence
+}
+
+struct ArchiveAttentionAssessment: Equatable {
+    let level: ArchiveAttentionLevel
+    let reasons: [String]
+}
+
+enum ArchiveDisappearanceRiskEvaluator {
+    private static let day: TimeInterval = 24 * 60 * 60
+
+    static func evaluate(
+        _ archive: CityArchive,
+        now: Date = .now
+    ) -> ArchiveAttentionAssessment {
+        let confirmations = archive.statusConfirmations.sorted { $0.createdAt > $1.createdAt }
+        let latestStillThere = confirmations.first { $0.result == .stillThere }
+        let negativeAfterLatestStillThere = confirmations.filter { confirmation in
+            guard confirmation.result != .stillThere else { return false }
+            guard let latestStillThere else { return true }
+            return confirmation.createdAt > latestStillThere.createdAt
+        }
+        let recentNotSeen = negativeAfterLatestStillThere.filter {
+            $0.result == .notSeen && age(of: $0.createdAt, at: now) <= 30 * day
+        }
+        let recentLocationChange = negativeAfterLatestStillThere.first {
+            $0.result == .locationChanged && age(of: $0.createdAt, at: now) <= 30 * day
+        }
+
+        if let latestStillThere,
+           age(of: latestStillThere.createdAt, at: now) <= 14 * day,
+           negativeAfterLatestStillThere.isEmpty {
+            return ArchiveAttentionAssessment(
+                level: .stable,
+                reasons: ["最近 14 天内有社区成员确认仍在"]
+            )
+        }
+
+        if recentNotSeen.count >= 2 {
+            return ArchiveAttentionAssessment(
+                level: .atRisk,
+                reasons: [
+                    "近 30 天有 \(recentNotSeen.count) 次暂未见到",
+                    latestStillThere.map {
+                        "最近一次确认仍在距今 \(wholeDaysSince($0.createdAt, at: now)) 天"
+                    } ?? "暂时没有确认仍在的社区线索"
+                ]
+            )
+        }
+
+        if let latestStillThere,
+           age(of: latestStillThere.createdAt, at: now) > 60 * day,
+           !recentNotSeen.isEmpty {
+            return ArchiveAttentionAssessment(
+                level: .atRisk,
+                reasons: [
+                    "最近一次确认仍在距今 \(wholeDaysSince(latestStillThere.createdAt, at: now)) 天",
+                    "近 30 天又有社区成员暂未见到"
+                ]
+            )
+        }
+
+        if recentLocationChange != nil {
+            return ArchiveAttentionAssessment(
+                level: .watch,
+                reasons: ["最近有摊位位置变化线索，等待新的现场确认"]
+            )
+        }
+
+        if !recentNotSeen.isEmpty {
+            return ArchiveAttentionAssessment(
+                level: .watch,
+                reasons: ["近期有一次暂未见到，尚不足以形成消失预警"]
+            )
+        }
+
+        if archive.status == .atRisk {
+            return ArchiveAttentionAssessment(
+                level: .atRisk,
+                reasons: ["社区已将这份档案标记为持续关注"]
+            )
+        }
+
+        return ArchiveAttentionAssessment(
+            level: .insufficientEvidence,
+            reasons: ["社区状态线索不足，等待进一步确认"]
+        )
+    }
+
+    private static func age(of date: Date, at now: Date) -> TimeInterval {
+        max(0, now.timeIntervalSince(date))
+    }
+
+    private static func wholeDaysSince(_ date: Date, at now: Date) -> Int {
+        max(0, Int(age(of: date, at: now) / day))
+    }
+}
+
+extension CityArchive {
+    var attentionAssessment: ArchiveAttentionAssessment {
+        ArchiveDisappearanceRiskEvaluator.evaluate(self)
+    }
+
+    var presentationStatus: ArchiveStatus {
+        switch attentionAssessment.level {
+        case .atRisk:
+            return .atRisk
+        case .stable where status == .atRisk:
+            return .closed
+        default:
+            return status
+        }
+    }
+}
+
 struct AppUser: Identifiable, Codable, Hashable {
     let id: UUID
     var name: String
     var role: AppRole
     var points: Int
     var rank: String
+    var avatarAttachment: PhotoAttachment? = nil
 }
 
 struct AIArchiveDraft: Codable, Hashable {

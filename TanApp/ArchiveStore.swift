@@ -68,7 +68,7 @@ final class ArchiveStore: ObservableObject {
                     archive.name,
                     archive.ownerName,
                     archive.category.title,
-                    archive.status.title,
+                    archive.presentationStatus.title,
                     archive.priceOrService,
                     archive.summary
                 ]
@@ -90,7 +90,8 @@ final class ArchiveStore: ObservableObject {
     }
 
     func addPhoto(to archive: CityArchive, caption: String, pendingImage: PendingImage) async throws {
-        let attachment = try await photoStorage.saveImage(pendingImage.image, caption: caption)
+        let attachment = try await saveAttachment(from: pendingImage, caption: caption)
+        cleanupTemporaryVideos(in: [pendingImage])
         markArchiveLit(archive, shouldPersist: false)
         updateArchive(archive.id, shouldPersist: false) { item in
             item.photos.insert(PhotoEntry(contributorName: user.name, caption: caption, attachment: attachment, likes: 0), at: 0)
@@ -98,8 +99,28 @@ final class ArchiveStore: ObservableObject {
         persist()
     }
 
+    func addPhotos(to archive: CityArchive, caption: String, pendingImages: [PendingImage]) async throws {
+        guard !pendingImages.isEmpty else { return }
+        let attachments = try await saveAttachments(from: pendingImages, caption: caption)
+        cleanupTemporaryVideos(in: pendingImages)
+        let entries = attachments.map {
+            PhotoEntry(
+                contributorName: user.name,
+                caption: caption,
+                attachment: $0,
+                likes: 0
+            )
+        }
+        markArchiveLit(archive, shouldPersist: false)
+        updateArchive(archive.id, shouldPersist: false) { item in
+            item.photos.insert(contentsOf: entries, at: 0)
+        }
+        persist()
+    }
+
     func addComment(to archive: CityArchive, text: String, pendingImages: [PendingImage]) async throws {
         let attachments = try await saveAttachments(from: Array(pendingImages.prefix(3)), caption: text)
+        cleanupTemporaryVideos(in: Array(pendingImages.prefix(3)))
         markArchiveLit(archive, shouldPersist: false)
         if selectedRole == .visitor {
             markArchiveVisited(archive, shouldPersist: false)
@@ -121,7 +142,8 @@ final class ArchiveStore: ObservableObject {
     ) async throws {
         let attachment: PhotoAttachment?
         if let pendingImage {
-            attachment = try await photoStorage.saveImage(pendingImage.image, caption: clue)
+            attachment = try await saveAttachment(from: pendingImage, caption: clue)
+            cleanupTemporaryVideos(in: [pendingImage])
         } else {
             attachment = nil
         }
@@ -168,6 +190,63 @@ final class ArchiveStore: ObservableObject {
         await photoStorage.loadImage(attachment, thumbnail: thumbnail)
     }
 
+    func videoURL(for attachment: PhotoAttachment) async -> URL? {
+        await photoStorage.loadVideoURL(attachment)
+    }
+
+    func updateProfile(
+        name: String,
+        avatarImage: PendingImage?,
+        removeExistingAvatar: Bool
+    ) async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else { return }
+
+        let previousName = user.name
+        let previousAvatar = user.avatarAttachment
+        let replacementAvatar: PhotoAttachment?
+        if let avatarImage {
+            replacementAvatar = try await photoStorage.saveImage(
+                avatarImage.image,
+                caption: "个人头像"
+            )
+        } else if removeExistingAvatar {
+            replacementAvatar = nil
+        } else {
+            replacementAvatar = previousAvatar
+        }
+
+        user.name = trimmedName
+        user.avatarAttachment = replacementAvatar
+
+        if previousName != trimmedName {
+            for index in archives.indices {
+                for photoIndex in archives[index].photos.indices
+                where archives[index].photos[photoIndex].contributorName == previousName {
+                    archives[index].photos[photoIndex].contributorName = trimmedName
+                }
+                for commentIndex in archives[index].comments.indices
+                where archives[index].comments[commentIndex].contributorName == previousName {
+                    archives[index].comments[commentIndex].contributorName = trimmedName
+                }
+                for confirmationIndex in archives[index].statusConfirmations.indices
+                where archives[index].statusConfirmations[confirmationIndex].contributorName == previousName {
+                    archives[index].statusConfirmations[confirmationIndex].contributorName = trimmedName
+                }
+                if archives[index].isUserCreated,
+                   archives[index].ownerName == previousName {
+                    archives[index].ownerName = trimmedName
+                }
+            }
+        }
+
+        persist()
+
+        if previousAvatar != replacementAvatar, let previousAvatar {
+            try? await photoStorage.deletePhoto(previousAvatar)
+        }
+    }
+
     func likePhoto(_ photo: PhotoEntry, in archive: CityArchive) {
         guard !photo.likedByUserIDs.contains(user.id) else { return }
         markArchiveLit(archive, shouldPersist: false)
@@ -207,15 +286,23 @@ final class ArchiveStore: ObservableObject {
         updateArchive(archive.id) { $0.status = .closed }
     }
 
-    func saveDraft(_ draft: AIArchiveDraft, coverImage: PendingImage?) async throws {
+    func saveDraft(
+        _ draft: AIArchiveDraft,
+        coverImage: PendingImage?,
+        at coordinate: CLLocationCoordinate2D
+    ) async throws {
         let coverAttachment: PhotoAttachment?
         if let coverImage {
-            coverAttachment = try await photoStorage.saveImage(coverImage.image, caption: "摊主建档现场照片")
+            coverAttachment = try await saveAttachment(
+                from: coverImage,
+                caption: "摊主建档现场影像"
+            )
+            cleanupTemporaryVideos(in: [coverImage])
         } else {
             coverAttachment = nil
         }
         let initialPhotos = coverAttachment.map {
-            [PhotoEntry(contributorName: user.name, caption: "摊主建档现场照片", attachment: $0, likes: 0)]
+            [PhotoEntry(contributorName: user.name, caption: "摊主建档现场影像", attachment: $0, likes: 0)]
         } ?? []
         let archive = CityArchive(
             name: draft.name,
@@ -223,7 +310,7 @@ final class ArchiveStore: ObservableObject {
             category: draft.category,
             tags: draft.tags,
             priceOrService: draft.priceOrService,
-            currentLocation: MockArchiveData.chengduCenter,
+            currentLocation: CoordinatePoint(coordinate),
             status: .closed,
             yearsActive: draft.yearsActive,
             summary: draft.summary,
@@ -271,6 +358,11 @@ final class ArchiveStore: ObservableObject {
         selectedTab = .map
     }
 
+    func consumeMapFocusRequest(_ request: MapFocusRequest) {
+        guard mapFocusRequest?.id == request.id else { return }
+        mapFocusRequest = nil
+    }
+
     func archive(with id: UUID) -> CityArchive? { archives.first(where: { $0.id == id }) }
 
     func markArchiveVisited(_ archive: CityArchive, shouldPersist: Bool = true) {
@@ -290,7 +382,7 @@ final class ArchiveStore: ObservableObject {
                 + archive.comments.flatMap(\.imageAttachments)
                 + archive.statusConfirmations.compactMap(\.attachment)
         }
-        for attachment in attachments {
+        for attachment in attachments + [user.avatarAttachment].compactMap({ $0 }) {
             try? await photoStorage.deletePhoto(attachment)
         }
         clearArchiveDetailContentCache()
@@ -313,9 +405,9 @@ final class ArchiveStore: ObservableObject {
         )
         do {
             try await repository.saveSnapshot(snapshot)
-            cloudState = "比赛演示数据已恢复"
+            cloudState = "初始档案数据已恢复"
         } catch {
-            cloudState = "演示数据恢复失败，请重试"
+            cloudState = "初始档案恢复失败，请重试"
         }
     }
 #endif
@@ -324,12 +416,30 @@ final class ArchiveStore: ObservableObject {
         var attachments: [PhotoAttachment] = []
         do {
             for pending in pendingImages {
-                attachments.append(try await photoStorage.saveImage(pending.image, caption: caption))
+                attachments.append(try await saveAttachment(from: pending, caption: caption))
             }
             return attachments
         } catch {
             for attachment in attachments { try? await photoStorage.deletePhoto(attachment) }
             throw error
+        }
+    }
+
+    private func saveAttachment(from pending: PendingImage, caption: String) async throws -> PhotoAttachment {
+        if let videoURL = pending.videoURL {
+            return try await photoStorage.saveVideo(
+                at: videoURL,
+                thumbnail: pending.image,
+                caption: caption
+            )
+        }
+        return try await photoStorage.saveImage(pending.image, caption: caption)
+    }
+
+    private func cleanupTemporaryVideos(in pendingItems: [PendingImage]) {
+        for item in pendingItems {
+            guard let videoURL = item.videoURL else { continue }
+            try? FileManager.default.removeItem(at: videoURL)
         }
     }
 
@@ -350,7 +460,7 @@ final class ArchiveStore: ObservableObject {
             litArchiveIDs = snapshot.litArchiveIDs
             cloudState = "本地档案已恢复"
         } catch {
-            cloudState = "本地档案读取失败，正在使用演示数据"
+            cloudState = "本地档案读取失败，正在载入初始档案"
         }
     }
 
@@ -372,8 +482,8 @@ final class ArchiveStore: ObservableObject {
         }
     }
 
-    private func defaultTab(for role: AppRole) -> AppTab {
-        role == .visitor ? .discover : .build
+    private func defaultTab(for _: AppRole) -> AppTab {
+        .map
     }
 }
 

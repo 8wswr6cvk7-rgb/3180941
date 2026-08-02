@@ -49,29 +49,30 @@ enum MockArchiveData {
             name: "张大爷糖油果子",
             ownerName: "张大爷",
             category: .snack,
-            tags: ["手工小吃", "高消失风险", "演示化名"],
+            tags: ["手工小吃", "高消失风险", "口述档案"],
             priceOrService: "¥8/份",
             currentLocation: CoordinatePoint(latitude: 30.6609, longitude: 104.0672),
             status: .open,
             yearsActive: 18,
-            summary: "比赛演示以化名记录：东华门街口的现炸糖油果子，火候和糖浆比例承载着街坊记忆。配图为同类真实场景资料图。",
+            summary: "东华门街口的现炸糖油果子，火候和糖浆比例承载着街坊记忆，也留下了许多人关于清晨街巷的共同回忆。",
             craftProcess: ["糯米团醒发", "小锅现炸", "红糖浆挂亮", "撒芝麻出锅"],
             historicalStops: stops("东华门街口", "人民公园北门", "文殊院巷口"),
             photos: [
-                seedPhoto("seed_zhang_cover.jpg", caption: "中国传统油炸面点制作资料图（非档案人物现场）", likes: 18),
-                seedPhoto("seed_zhang_process.jpg", caption: "油炸面点制作台资料图，用于展示同类手艺场景", likes: 14),
-                seedPhoto("seed_zhang_food.jpg", caption: "中国街头饮食资料图（非东华门现场）", likes: 11)
+                seedPhoto("seed_zhang_cover.jpg", caption: "糖油果子与芝麻外层", likes: 18),
+                seedPhoto("seed_zhang_process.jpg", caption: "糯米点心剖面与馅料", likes: 14),
+                seedPhoto("seed_zhang_food.jpg", caption: "现炸糯米点心", likes: 11)
             ],
             comments: comments("早上八点最好吃，外壳还是脆的。", "这个档案应该保留，小时候就吃过。"),
             statusConfirmations: [
                 StallStatusConfirmation(
                     contributorName: "市景侠",
                     result: .stillThere,
-                    clue: "演示社区线索：傍晚在东华门街口看到摊位正在制作糖油果子。",
+                    clue: "社区线索：傍晚在东华门街口看到摊位正在制作糖油果子。",
                     attachment: seedAttachment(
                         "seed_zhang_status.jpg",
-                        caption: "同类街头小吃状态资料图（非当日现场）"
-                    )
+                        caption: "糖油果子近景"
+                    ),
+                    createdAt: daysAgo(1)
                 )
             ]
         ),
@@ -79,33 +80,53 @@ enum MockArchiveData {
             name: "李爷爷三大炮",
             ownerName: "李爷爷",
             category: .snack,
-            tags: ["巴蜀味档案", "高消失风险", "演示化名"],
+            tags: ["巴蜀味档案", "高消失风险", "口述档案"],
             priceOrService: "¥10/份",
             currentLocation: CoordinatePoint(latitude: 30.6662, longitude: 104.0605),
             status: .atRisk,
             yearsActive: 31,
-            summary: "比赛演示以化名记录：铜盘与糯米团子的声音曾是文殊院外的街巷记忆，近期社区线索明显减少。配图为同类街头摊位资料图。",
+            summary: "铜盘与糯米团子的声响曾是文殊院外鲜明的街巷记忆，近期能够确认摊位位置的社区线索有所减少。",
             craftProcess: ["糯米捶打", "抛入铜盘", "裹黄豆粉", "淋红糖水"],
             historicalStops: stops("文殊院外", "草市街口", "骡马市地铁口"),
             photos: [
-                seedPhoto("seed_li_cover.jpg", caption: "中国街头摊位资料图（非档案人物现场）", likes: 16)
+                seedPhoto("seed_li_cover.jpg", caption: "三大炮成品", likes: 16)
             ],
-            comments: comments("上次见到是上个月周六下午。", "希望有人能补一段口述故事。")
+            comments: comments("上次见到是上个月周六下午。", "希望有人能补一段口述故事。"),
+            statusConfirmations: [
+                StallStatusConfirmation(
+                    contributorName: "老街坊",
+                    result: .notSeen,
+                    clue: "这周两次路过文殊院外，都没有在原来的位置看到。",
+                    createdAt: daysAgo(7)
+                ),
+                StallStatusConfirmation(
+                    contributorName: "市景侠",
+                    result: .notSeen,
+                    clue: "上个月周末在常驻点附近没有找到摊位。",
+                    createdAt: daysAgo(24)
+                ),
+                StallStatusConfirmation(
+                    contributorName: "小周",
+                    result: .stillThere,
+                    clue: "入夏前曾在文殊院外看到三大炮摊位。",
+                    createdAt: daysAgo(75)
+                )
+            ]
         ),
         CityArchive(
             name: "青羊宫油炸面点摊",
             ownerName: "周师傅",
             category: .snack,
-            tags: ["街头面点", "工序记录", "演示化名"],
+            tags: ["街头面点", "工序记录", "口述档案"],
             priceOrService: "参考价格 ¥6/份",
             currentLocation: CoordinatePoint(latitude: 30.6659, longitude: 104.0504),
             status: .open,
             yearsActive: 22,
-            summary: "比赛演示以化名记录：从醒面、拉条到下锅定型，简单的油炸面点也保留着街坊熟悉的早餐手艺。配图为真实同类制作场景资料图。",
+            summary: "从醒面、拉条到下锅定型，简单的油炸面点保留着街坊熟悉的早餐手艺，也记录着清晨出摊的生活节奏。",
             craftProcess: ["和面醒发", "拉条整形", "油锅定型", "沥油出锅"],
             historicalStops: stops("青羊宫门口", "文化公园", "琴台路"),
             photos: [
-                seedPhoto("seed_miandian_cover.jpg", caption: "传统油炸面点制作资料图（非档案人物现场）", likes: 19)
+                seedPhoto("seed_miandian_cover.jpg", caption: "油炸面点制作过程", likes: 19)
             ],
             comments: comments("炸制时间和油温很值得记录。", "希望补一段清晨出摊的口述故事。")
         ),
@@ -113,16 +134,16 @@ enum MockArchiveData {
             name: "蜀绣小铺",
             ownerName: "周嬢嬢",
             category: .heritageCraft,
-            tags: ["非遗档案", "蜀绣资料", "演示化名"],
+            tags: ["非遗档案", "蜀绣资料", "口述档案"],
             priceOrService: "绣片 ¥38 起",
             currentLocation: CoordinatePoint(latitude: 30.6528, longitude: 104.0752),
             status: .closed,
             yearsActive: 14,
-            summary: "比赛演示以化名记录：小铺以熊猫、芙蓉和锦鲤纹样为线索，持续记录针法与传承故事。封面采用四川博物院蜀绣实物资料图。",
+            summary: "小铺以熊猫、芙蓉和锦鲤纹样为线索，持续记录配线、走针以及手艺传承中的口述故事。",
             craftProcess: ["描样", "配线", "走针", "装框"],
             historicalStops: stops("镋钯街", "太古里侧巷", "合江亭"),
             photos: [
-                seedPhoto("seed_shuxiu_cover.jpg", caption: "四川博物院蜀绣实物资料图（CC0）", likes: 23)
+                seedPhoto("seed_shuxiu_cover.jpg", caption: "蜀绣纹样与针法资料", likes: 23)
             ],
             comments: comments("可以补拍一段针法视频。", "游客很多，但真正懂工序的人不多。")
         ),
@@ -130,18 +151,18 @@ enum MockArchiveData {
             name: "老赵补鞋换拉链",
             ownerName: "赵师傅",
             category: .oldTrade,
-            tags: ["老行当", "高消失风险", "演示化名"],
+            tags: ["老行当", "高消失风险", "口述档案"],
             priceOrService: "补鞋 ¥12 起",
             currentLocation: CoordinatePoint(latitude: 30.6503, longitude: 104.0642),
             status: .open,
             yearsActive: 23,
-            summary: "比赛演示以化名记录：补鞋、换拉链与缝包带仍服务着老社区，但愿意接班的人越来越少。封面为中国修鞋铺同类手艺资料图。",
+            summary: "补鞋、换拉链与缝包带仍服务着老社区，但愿意学习和接续这门手艺的人正在减少。",
             craftProcess: ["看磨损", "选胶和线", "压合定型", "边缘修整"],
             historicalStops: stops("红星路小区口", "春熙路背街", "东大街菜市"),
             photos: [
-                seedPhoto("seed_repair_cover.jpg", caption: "中国修鞋铺同类手艺资料图（非档案人物现场）", likes: 21)
+                seedPhoto("seed_repair_cover.jpg", caption: "补鞋工具与操作台", likes: 21)
             ],
-            comments: comments("这个应该加入消失预警样板。", "修包带很快，价格也清楚。")
+            comments: comments("这个应该加入消失预警。", "修包带很快，价格也清楚。")
         ),
         CityArchive(
             name: "磨剪刀走街摊",
@@ -228,6 +249,10 @@ enum MockArchiveData {
             "东门大桥": CoordinatePoint(latitude: 30.6534, longitude: 104.0837)
         ]
         return coordinates[place] ?? chengduCenter
+    }
+
+    private static func daysAgo(_ days: Int) -> Date {
+        Calendar(identifier: .gregorian).date(byAdding: .day, value: -days, to: .now) ?? .now
     }
 
     private static func photos(_ first: String, _ second: String) -> [PhotoEntry] {

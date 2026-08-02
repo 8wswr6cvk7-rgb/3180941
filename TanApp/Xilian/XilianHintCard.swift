@@ -6,7 +6,7 @@ struct XilianHintCard: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             XilianAnimatedAvatarView(
-                state: archive.status == .atRisk ? .worried : .idle,
+                state: archive.presentationStatus == .atRisk ? .worried : .idle,
                 size: .small
             )
             VStack(alignment: .leading, spacing: 5) {

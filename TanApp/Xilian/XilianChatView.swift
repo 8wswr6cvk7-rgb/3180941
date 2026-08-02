@@ -152,7 +152,7 @@ struct XilianChatView: View {
                         .foregroundStyle(Color.tanInk)
                 }
                 Spacer()
-                StatusBadge(status: archive.status)
+                StatusBadge(status: archive.presentationStatus)
             }
             Text(XilianCopy.statusHint(for: archive))
                 .font(.system(size: 14, weight: .semibold))

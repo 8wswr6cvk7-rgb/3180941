@@ -81,7 +81,7 @@ struct XilianChatAgent {
     }
 
     private func archiveDescription(_ archive: CityArchive) -> String {
-        "- \(archive.name)；摊主：\(archive.ownerName)；类别：\(archive.category.title)；状态：\(archive.status.title)；年限：\(archive.yearsActive) 年；服务/价格：\(archive.priceOrService)；摘要：\(archive.summary)；标签：\(archive.tags.joined(separator: "、"))"
+        "- \(archive.name)；摊主：\(archive.ownerName)；类别：\(archive.category.title)；状态：\(archive.presentationStatus.title)；年限：\(archive.yearsActive) 年；服务/价格：\(archive.priceOrService)；摘要：\(archive.summary)；标签：\(archive.tags.joined(separator: "、"))"
     }
 
     private func normalizedReply(_ response: String) -> String {

@@ -61,13 +61,13 @@ struct ArchiveCoverView: View {
                     .scaledToFill()
             } else {
                 LinearGradient(
-                    colors: [archive.status.tint.opacity(0.24), Color.tanPrimary.opacity(0.16), .white],
+                    colors: [archive.presentationStatus.tint.opacity(0.24), Color.tanPrimary.opacity(0.16), .white],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Image(systemName: archive.category.icon)
                     .font(.system(size: 38, weight: .bold))
-                    .foregroundStyle(archive.status.tint)
+                    .foregroundStyle(archive.presentationStatus.tint)
             }
         }
         .clipped()
@@ -99,7 +99,7 @@ struct ArchiveRow: View {
                 }
 
                 Spacer()
-                StatusBadge(status: archive.status)
+                StatusBadge(status: archive.presentationStatus)
             }
 
             Text(archive.summary)

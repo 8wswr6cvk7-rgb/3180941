@@ -76,7 +76,7 @@ struct LoginView: View {
                     Button {
                         login()
                     } label: {
-                        Text(selectedRole == .visitor ? "进入发现页" : "进入 AI 建档")
+                        Text("进入地图")
                     }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(!canLogin)
@@ -270,14 +270,19 @@ struct LoginView: View {
 struct HomeView: View {
     @EnvironmentObject private var store: ArchiveStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var appFlipAngle = 0.0
     @State private var isSwitchingRole = false
+    @State private var appFlipAngle = 0.0
+    @State private var mapViewRevision = 0
 
     var body: some View {
         TabView(selection: $store.selectedTab) {
             NavigationStack {
                 ArchiveMapView()
-                    .roleSwitchToolbar(action: switchRole)
+                    .id(mapViewRevision)
+                    .roleSwitchToolbar(
+                        isEnabled: !isSwitchingRole,
+                        action: switchRole
+                    )
             }
             .tag(AppTab.map)
             .tabItem {
@@ -287,7 +292,10 @@ struct HomeView: View {
             if store.selectedRole == .visitor {
                 NavigationStack {
                     DiscoverView()
-                        .roleSwitchToolbar(action: switchRole)
+                        .roleSwitchToolbar(
+                            isEnabled: !isSwitchingRole,
+                            action: switchRole
+                        )
                 }
                 .tag(AppTab.discover)
                 .tabItem {
@@ -298,7 +306,10 @@ struct HomeView: View {
             if store.selectedRole == .stallOwner {
                 NavigationStack {
                     AIArchiveBuilderView()
-                        .roleSwitchToolbar(action: switchRole)
+                        .roleSwitchToolbar(
+                            isEnabled: !isSwitchingRole,
+                            action: switchRole
+                        )
                 }
                 .tag(AppTab.build)
                 .tabItem {
@@ -308,7 +319,10 @@ struct HomeView: View {
 
             NavigationStack {
                 ProfileView()
-                    .roleSwitchToolbar(action: switchRole)
+                    .roleSwitchToolbar(
+                        isEnabled: !isSwitchingRole,
+                        action: switchRole
+                    )
             }
             .tag(AppTab.profile)
             .tabItem {
@@ -323,16 +337,23 @@ struct HomeView: View {
             perspective: 0.72
         )
         .scaleEffect(abs(appFlipAngle) > 45 ? 0.96 : 1)
+        .allowsHitTesting(!isSwitchingRole)
     }
 
     private func switchRole() {
         guard !isSwitchingRole else { return }
+        isSwitchingRole = true
+
         if reduceMotion {
             let nextRole: AppRole = store.selectedRole == .visitor ? .stallOwner : .visitor
             store.switchRole(to: nextRole)
+            mapViewRevision += 1
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                isSwitchingRole = false
+            }
             return
         }
-        isSwitchingRole = true
 
         withAnimation(.easeIn(duration: 0.22)) {
             appFlipAngle = 90
@@ -347,19 +368,26 @@ struct HomeView: View {
                 appFlipAngle = 0
             }
             try? await Task.sleep(nanoseconds: 250_000_000)
+            // MKMapView 的署名图层可能保留父视图 3D 变换后的几何状态。
+            // 页面恢复正面后重建地图层，避免 Legal 署名被反复拉伸。
+            mapViewRevision += 1
             isSwitchingRole = false
         }
     }
 }
 
 private struct RoleSwitchToolbarModifier: ViewModifier {
+    let isEnabled: Bool
     let action: () -> Void
 
     func body(content: Content) -> some View {
         content
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    RoleFlipButton(action: action)
+                    RoleFlipButton(
+                        isEnabled: isEnabled,
+                        action: action
+                    )
                 }
             }
     }
@@ -367,6 +395,7 @@ private struct RoleSwitchToolbarModifier: ViewModifier {
 
 private struct RoleFlipButton: View {
     @EnvironmentObject private var store: ArchiveStore
+    let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
@@ -375,23 +404,37 @@ private struct RoleFlipButton: View {
                 Image(systemName: store.selectedRole == .visitor ? "person.fill" : "storefront.fill")
                 Text(store.selectedRole == .visitor ? "用户端" : "摊户端")
             }
-            .font(.system(size: 12, weight: .black))
+            .font(.system(size: 11.5, weight: .black))
             .foregroundStyle(Color.tanInk)
-            .padding(.horizontal, 10)
-            .frame(height: 34)
+            .lineLimit(1)
+            .minimumScaleFactor(0.9)
+            .frame(width: 84, height: 34)
             .background(.white.opacity(0.94))
             .clipShape(Capsule())
             .overlay {
                 Capsule().stroke(Color.tanLine)
             }
+            .frame(width: 92, height: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier("home.role.switch")
         .accessibilityLabel("切换用户端和摊户端")
+        .accessibilityHint(isEnabled ? "点按切换身份" : "正在切换身份")
     }
 }
 
 private extension View {
-    func roleSwitchToolbar(action: @escaping () -> Void) -> some View {
-        modifier(RoleSwitchToolbarModifier(action: action))
+    func roleSwitchToolbar(
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        modifier(
+            RoleSwitchToolbarModifier(
+                isEnabled: isEnabled,
+                action: action
+            )
+        )
     }
 }

@@ -13,6 +13,7 @@ struct AIArchiveBuilderView: View {
     @EnvironmentObject private var store: ArchiveStore
     @Environment(\.dismiss) private var dismiss
     private let qwenAgent = QwenArchiveAgent()
+    private let visionService: ArchiveVisionAnalyzing
 
     var editingArchive: CityArchive? = nil
 
@@ -26,10 +27,15 @@ struct AIArchiveBuilderView: View {
     @State private var dialect: ArchiveDialect = .chengdu
     @State private var showExamplePrompt = true
     @State private var pendingImages: [PendingImage] = []
+    @State private var visionState: ArchiveVisionAnalysisState = .idle
+    @State private var visionHints: ArchiveVisionHints?
+    @State private var visionTask: Task<Void, Never>?
     @State private var toastMessage: String?
     @StateObject private var speechReader = SpeechReader()
     @StateObject private var speechController: SpeechRecognitionController
+    @StateObject private var locationManager = StallLocationManager()
     @State private var showMicrophoneSettingsAlert = false
+    @State private var showLocationRequiredAlert = false
     @State private var draft = AIArchiveDraft(
         name: "未命名档案",
         ownerName: "摊主",
@@ -43,9 +49,11 @@ struct AIArchiveBuilderView: View {
 
     init(
         editingArchive: CityArchive? = nil,
-        speechService: SpeechRecognitionService = DashScopeSpeechRecognitionService()
+        speechService: SpeechRecognitionService = DashScopeSpeechRecognitionService(),
+        visionService: ArchiveVisionAnalyzing = QwenArchiveVisionService()
     ) {
         self.editingArchive = editingArchive
+        self.visionService = visionService
         _speechController = StateObject(
             wrappedValue: SpeechRecognitionController(service: speechService)
         )
@@ -87,6 +95,8 @@ struct AIArchiveBuilderView: View {
                 messages = [
                     BuilderMessage(role: "AI 建档助手", text: "我已载入原档案。你可以直接说“把营业时间改成下午三点后”，或补充新的故事、路线、工序。")
                 ]
+            } else {
+                locationManager.requestAndStartUpdating()
             }
             speakLatestAIQuestion()
         }
@@ -98,12 +108,18 @@ struct AIArchiveBuilderView: View {
         .onChange(of: speechController.failure) { failure in
             showMicrophoneSettingsAlert = failure?.offersSettings == true
         }
+        .onChange(of: pendingImages.map(\.id)) { _ in
+            analyzeSelectedPhoto()
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             speechController.cancel(preservingTranscript: true)
+            visionTask?.cancel()
         }
         .onDisappear {
+            visionTask?.cancel()
             speechController.cancel()
             speechReader.stop()
+            locationManager.stopUpdating()
         }
         .alert("无法使用麦克风", isPresented: $showMicrophoneSettingsAlert) {
             Button("取消", role: .cancel) {}
@@ -114,28 +130,39 @@ struct AIArchiveBuilderView: View {
         } message: {
             Text("请在系统设置中允许“摊”使用麦克风。你也可以取消并继续使用键盘输入。")
         }
+        .alert("需要当前位置", isPresented: $showLocationRequiredAlert) {
+            Button("取消", role: .cancel) {}
+            Button("前往设置") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+        } message: {
+            Text("新档案需要记录首次活动位置。请允许定位，或在模拟器中设置位置后再次保存；当前草稿不会丢失。")
+        }
     }
 
     private var archivePhotoCard: some View {
         Surface {
-            Text("摊位现场照片")
+            Text("摊位现场影像")
                 .font(.system(size: 16, weight: .black))
                 .foregroundStyle(Color.tanInk)
-            Text("照片会作为档案封面与补充材料保存；当前 AI 只根据你的文字整理档案。")
+            Text("千问会提取照片或视频封面帧中可见的类别、工具与环境线索，再结合你的口述整理档案；所有线索都需要你确认。")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .lineSpacing(3)
             ImageAttachmentPicker(
                 pendingImages: $pendingImages,
                 maximumSelectionCount: 1,
-                emptyPrompt: "可拍摄或从相册选择 1 张摊位照片"
+                emptyPrompt: "可拍摄或从相册选择 1 张照片或视频",
+                allowsVideos: true
             )
+            visionAnalysisStatus
         }
     }
 
     private var buildSteps: some View {
         Surface {
-            Text("拍一张现场照片，再讲讲摊位故事；AI 会根据文字整理成档案。")
+            Text("添加现场照片或视频，再讲讲摊位故事；AI 会结合可见线索与口述整理成档案。")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color.tanInk)
                 .lineLimit(2)
@@ -359,7 +386,7 @@ struct AIArchiveBuilderView: View {
                 Text(isSavingDraft ? "正在保存…" : (editingArchive == nil ? "确认入库" : "保存修改"))
             }
             .buttonStyle(PrimaryButtonStyle())
-            .disabled(isSavingDraft || isThinking || !hasGeneratedDraft)
+            .disabled(isSavingDraft || isThinking || visionState.isAnalyzing || !hasGeneratedDraft)
         }
     }
 
@@ -455,6 +482,7 @@ struct AIArchiveBuilderView: View {
                             Color.tanPrimary.opacity(
                                 input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 || isThinking
+                                || visionState.isAnalyzing
                                 || speechController.state.isBusy ? 0.4 : 1
                             )
                         )
@@ -464,6 +492,7 @@ struct AIArchiveBuilderView: View {
                 .disabled(
                     input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || isThinking
+                    || visionState.isAnalyzing
                     || speechController.state.isBusy
                 )
                 .accessibilityLabel("发送建档讲述")
@@ -518,6 +547,50 @@ struct AIArchiveBuilderView: View {
                 }
             }
 
+            if speechController.state == .listening {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.tanLine)
+                        Capsule()
+                            .fill(Color.tanPrimary)
+                            .frame(
+                                width: proxy.size.width * CGFloat(
+                                    max(0.04, min(1, speechController.audioLevel))
+                                )
+                            )
+                    }
+                }
+                .frame(height: 5)
+                .accessibilityLabel(
+                    speechController.hasDetectedVoice
+                        ? "已检测到麦克风声音"
+                        : "正在等待麦克风声音"
+                )
+
+                if let captureStatusText = speechController.captureStatusText {
+                    Label(
+                        captureStatusText,
+                        systemImage: speechController.hasDetectedVoice
+                            ? "waveform"
+                            : "mic.fill"
+                    )
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(
+                        speechController.hasDetectedVoice
+                            ? Color.tanPrimary
+                            : Color.tanInk.opacity(0.56)
+                    )
+                }
+            }
+
+            if let warningText = speechController.warningText {
+                Label(warningText, systemImage: "mic.slash.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.warningRed)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if !speechController.liveTranscript.isEmpty {
                 Text(speechController.liveTranscript)
                     .font(.system(size: 14, weight: .semibold))
@@ -541,18 +614,117 @@ struct AIArchiveBuilderView: View {
 
     private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !speechController.state.isBusy else { return }
+        guard !text.isEmpty,
+              !speechController.state.isBusy,
+              !visionState.isAnalyzing else {
+            return
+        }
         messages.append(BuilderMessage(role: "摊户", text: text))
         input = ""
         isThinking = true
 
+        let agentInput: String
+        if let visionHints {
+            agentInput = """
+            建档语言：\(dialect.title)。
+            \(text)
+
+            \(visionHints.agentContext)
+            """
+        } else {
+            agentInput = "建档语言：\(dialect.title)。\(text)"
+        }
         Task {
-            await applyQwenAgentUpdate(from: "建档语言：\(dialect.title)。\(text)")
+            await applyQwenAgentUpdate(from: agentInput)
+        }
+    }
+
+    @ViewBuilder
+    private var visionAnalysisStatus: some View {
+        switch visionState {
+        case .idle:
+            EmptyView()
+        case .analyzing:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("千问正在读取影像中的可见线索…")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.tanInk.opacity(0.66))
+            }
+            .accessibilityElement(children: .combine)
+        case .ready:
+            if let visionHints {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("已提取待确认的影像线索", systemImage: "sparkles")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(Color.tanPrimary)
+                    Text(visionHints.displaySummary)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.tanInk.opacity(0.72))
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !visionHints.uncertainties.isEmpty {
+                        Text("还需确认：\(visionHints.uncertainties.joined(separator: "、"))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.tanPrimary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+            }
+        case .failed:
+            Label("影像理解暂时不可用，仍可继续使用文字或方言口述建档。", systemImage: "exclamationmark.circle")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.warningRed)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @MainActor
+    private func analyzeSelectedPhoto() {
+        visionTask?.cancel()
+        guard let pendingImage = pendingImages.first else {
+            visionState = .idle
+            visionHints = nil
+            return
+        }
+
+        let imageID = pendingImage.id
+        visionState = .analyzing
+        visionHints = nil
+        visionTask = Task {
+            do {
+                let hints = try await visionService.analyze(image: pendingImage.image)
+                guard !Task.isCancelled,
+                      pendingImages.first?.id == imageID else {
+                    return
+                }
+                visionHints = hints
+                visionState = .ready
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled,
+                      pendingImages.first?.id == imageID else {
+                    return
+                }
+                visionHints = nil
+                visionState = .failed
+            }
         }
     }
 
     private func saveCurrentDraft() {
         guard !isSavingDraft else { return }
+        if editingArchive == nil, locationManager.currentCoordinate == nil {
+            locationManager.requestAndStartUpdating()
+            showLocationRequiredAlert = true
+            return
+        }
         isSavingDraft = true
         let image = pendingImages.first
         Task {
@@ -560,17 +732,22 @@ struct AIArchiveBuilderView: View {
                 if let editingArchive {
                     store.updateArchive(editingArchive, with: draft)
                     if let image {
-                        try await store.addPhoto(to: editingArchive, caption: "摊主更新现场照片", pendingImage: image)
+                        try await store.addPhoto(to: editingArchive, caption: "摊主更新现场影像", pendingImage: image)
                     }
                     showToast("档案修改已保存", binding: $toastMessage)
                 } else {
-                    try await store.saveDraft(draft, coverImage: image)
+                    guard let coordinate = locationManager.currentCoordinate else {
+                        showLocationRequiredAlert = true
+                        isSavingDraft = false
+                        return
+                    }
+                    try await store.saveDraft(draft, coverImage: image, at: coordinate)
                     showToast("档案已入库，可以在地图上看到它了", binding: $toastMessage)
                 }
                 try? await Task.sleep(nanoseconds: 650_000_000)
                 dismiss()
             } catch {
-                showToast("图片保存失败，请重试或继续只提交文字档案。", binding: $toastMessage)
+                showToast("影像保存失败，请重试或继续只提交文字档案。", binding: $toastMessage)
                 isSavingDraft = false
             }
         }

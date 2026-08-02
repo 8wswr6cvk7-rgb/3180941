@@ -38,7 +38,7 @@ final class XilianChatViewModel: ObservableObject {
         messages = [
             XilianChatMessage(role: .xilian, text: XilianCompanion.defaultGreeting)
         ]
-        animationState = selectedArchive?.status == .atRisk ? .worried : .idle
+        animationState = selectedArchive?.presentationStatus == .atRisk ? .worried : .idle
     }
 
     var canSend: Bool {
@@ -98,7 +98,7 @@ final class XilianChatViewModel: ObservableObject {
         Task {
             try? await Task.sleep(nanoseconds: 900_000_000)
             guard animationState == .speaking else { return }
-            animationState = selectedArchive?.status == .atRisk ? .worried : .idle
+            animationState = selectedArchive?.presentationStatus == .atRisk ? .worried : .idle
         }
     }
 }

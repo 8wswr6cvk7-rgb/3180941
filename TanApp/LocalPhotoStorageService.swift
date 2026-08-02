@@ -1,15 +1,19 @@
 import Foundation
+import AVFoundation
 import UIKit
 
 protocol PhotoStorageService {
     func saveImage(_ image: UIImage, caption: String?) async throws -> PhotoAttachment
+    func saveVideo(at sourceURL: URL, thumbnail: UIImage, caption: String?) async throws -> PhotoAttachment
     func deletePhoto(_ attachment: PhotoAttachment) async throws
     func loadImage(_ attachment: PhotoAttachment, thumbnail: Bool) async -> UIImage?
+    func loadVideoURL(_ attachment: PhotoAttachment) async -> URL?
 }
 
 actor LocalPhotoStorageService: PhotoStorageService {
     private let rootURL: URL
     private let imagesURL: URL
+    private let videosURL: URL
     private let thumbnailsURL: URL
     private let resourceBundle: Bundle
 
@@ -29,6 +33,7 @@ actor LocalPhotoStorageService: PhotoStorageService {
         self.rootURL = baseURL
         self.resourceBundle = resourceBundle
         imagesURL = baseURL.appendingPathComponent("Images", isDirectory: true)
+        videosURL = baseURL.appendingPathComponent("Videos", isDirectory: true)
         thumbnailsURL = baseURL.appendingPathComponent("Thumbnails", isDirectory: true)
     }
 
@@ -61,10 +66,50 @@ actor LocalPhotoStorageService: PhotoStorageService {
         )
     }
 
+    func saveVideo(at sourceURL: URL, thumbnail: UIImage, caption: String?) async throws -> PhotoAttachment {
+        try makeDirectoriesIfNeeded()
+
+        let id = UUID()
+        let sourceExtension = sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension.lowercased()
+        let videoFilename = "\(id.uuidString).\(sourceExtension)"
+        let thumbnailFilename = "\(id.uuidString)_thumb.jpg"
+        let destinationURL = videosURL.appendingPathComponent(videoFilename)
+
+        guard let thumbnailData = Self.jpegData(for: thumbnail, maxPixel: 720, quality: 0.8) else {
+            throw LocalPhotoStorageError.encodingFailed
+        }
+
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+            try thumbnailData.write(
+                to: thumbnailsURL.appendingPathComponent(thumbnailFilename),
+                options: .atomic
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: destinationURL)
+            try? FileManager.default.removeItem(at: thumbnailsURL.appendingPathComponent(thumbnailFilename))
+            throw error
+        }
+
+        let duration = try? await AVURLAsset(url: destinationURL).load(.duration)
+        let seconds = duration.map(CMTimeGetSeconds) ?? .nan
+        return PhotoAttachment(
+            id: id,
+            localFilename: videoFilename,
+            thumbnailFilename: thumbnailFilename,
+            caption: caption,
+            mediaType: .video,
+            videoDuration: seconds.isFinite ? seconds : nil
+        )
+    }
+
     func deletePhoto(_ attachment: PhotoAttachment) async throws {
         let manager = FileManager.default
         let storedFiles = [
-            (attachment.localFilename, imagesURL),
+            (
+                attachment.localFilename,
+                attachment.resolvedMediaType == .video ? videosURL : imagesURL
+            ),
             (attachment.thumbnailFilename, thumbnailsURL)
         ]
         for (filename, directory) in storedFiles where !filename.isEmpty {
@@ -75,8 +120,9 @@ actor LocalPhotoStorageService: PhotoStorageService {
     }
 
     func loadImage(_ attachment: PhotoAttachment, thumbnail: Bool) async -> UIImage? {
-        let filename = thumbnail ? attachment.thumbnailFilename : attachment.localFilename
-        let directory = thumbnail ? thumbnailsURL : imagesURL
+        let shouldUseThumbnail = thumbnail || attachment.resolvedMediaType == .video
+        let filename = shouldUseThumbnail ? attachment.thumbnailFilename : attachment.localFilename
+        let directory = shouldUseThumbnail ? thumbnailsURL : imagesURL
         if !filename.isEmpty,
            let localImage = UIImage(contentsOfFile: directory.appendingPathComponent(filename).path) {
             return localImage
@@ -92,10 +138,28 @@ actor LocalPhotoStorageService: PhotoStorageService {
         return UIImage(contentsOfFile: resourceURL.path)
     }
 
+    func loadVideoURL(_ attachment: PhotoAttachment) async -> URL? {
+        guard attachment.resolvedMediaType == .video else { return nil }
+        if !attachment.localFilename.isEmpty {
+            let localURL = videosURL.appendingPathComponent(attachment.localFilename)
+            if FileManager.default.fileExists(atPath: localURL.path) {
+                return localURL
+            }
+        }
+
+        guard let resourceName = attachment.bundledResourceName else { return attachment.remoteURL }
+        return resourceBundle.url(
+            forResource: resourceName,
+            withExtension: nil,
+            subdirectory: "SeedPhotos"
+        ) ?? resourceBundle.url(forResource: resourceName, withExtension: nil)
+    }
+
     private func makeDirectoriesIfNeeded() throws {
         let manager = FileManager.default
         try manager.createDirectory(at: rootURL, withIntermediateDirectories: true)
         try manager.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+        try manager.createDirectory(at: videosURL, withIntermediateDirectories: true)
         try manager.createDirectory(at: thumbnailsURL, withIntermediateDirectories: true)
     }
 

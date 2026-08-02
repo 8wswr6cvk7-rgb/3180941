@@ -56,12 +56,11 @@ final class _180941UITests: XCTestCase {
         archiveName.tap()
 
         XCTAssertTrue(app.navigationBars["张大爷糖油果子"].waitForExistence(timeout: 5))
-        let community = app.otherElements["archive.community"]
-        for _ in 0..<8 where !community.isHittable {
+        let communityTitle = app.staticTexts["社区共建"]
+        for _ in 0..<16 where !communityTitle.isHittable {
             app.swipeUp()
         }
-        XCTAssertTrue(community.exists)
-        XCTAssertTrue(app.staticTexts["社区共建"].exists)
+        XCTAssertTrue(communityTitle.exists)
 
         let mapTab = app.tabBars.buttons["地图"]
         XCTAssertTrue(mapTab.exists)

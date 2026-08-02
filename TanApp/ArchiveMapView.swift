@@ -32,9 +32,10 @@ struct ArchiveMapView: View {
     @State private var xilianRouteTask: Task<Void, Never>?
     @State private var arrivedArchiveIDs: Set<UUID> = []
     @State private var arrivalIntroArchive: CityArchive?
-    @State private var pendingDemoRouteArchiveID: UUID?
-    @State private var showDemoOriginConfirmation = false
-    @State private var usesDemoGuideOrigin = false
+    @State private var pendingReferenceRouteArchiveID: UUID?
+    @State private var showReferenceOriginConfirmation = false
+    @State private var usesReferenceGuideOrigin = false
+    @State private var presentedDetailArchiveID: UUID?
 
     private var displayedArchives: [CityArchive] {
         store.selectedRole == .stallOwner ? store.currentUserArchives : store.archives
@@ -75,6 +76,7 @@ struct ArchiveMapView: View {
                 xilianRouteVisualRevision: xilianRouteController.visualRevision,
                 xilianTrailCoordinates: store.selectedRole == .visitor ? xilianRouteCoordinates : []
             ) { archive in
+                guard presentedDetailArchiveID == nil else { return }
                 if visibleRouteArchiveID == archive.id && isMapCardCollapsed {
                     return
                 }
@@ -93,8 +95,8 @@ struct ArchiveMapView: View {
 
             VStack(spacing: 12) {
                 topControls
-                if usesDemoGuideOrigin {
-                    Label("成都演示位置 · 路线预览", systemImage: "location.circle.fill")
+                if usesReferenceGuideOrigin {
+                    Label("成都档案参考起点", systemImage: "location.circle.fill")
                         .font(.system(size: 12, weight: .black))
                         .foregroundStyle(Color.tanInk)
                         .padding(.horizontal, 12)
@@ -118,7 +120,7 @@ struct ArchiveMapView: View {
                     HStack {
                         Spacer()
                         XilianFloatingButton(
-                            state: selectedArchive?.status == .atRisk ? .worried : .idle
+                            state: selectedArchive?.presentationStatus == .atRisk ? .worried : .idle
                         ) {
                             xilianChatArchiveID = nil
                             showXilian = true
@@ -186,8 +188,13 @@ struct ArchiveMapView: View {
                             showToast("已收摊，街坊还能看到历史档案", binding: $toastMessage)
                         },
                         onDismiss: {
+                            cancelXilianGuidance()
+                            visibleRouteArchiveID = nil
+                            navigationArchiveID = nil
+                            focusCoordinate = nil
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                                isMapCardCollapsed = true
+                                selectedArchiveID = nil
+                                isMapCardCollapsed = false
                             }
                         }
                     )
@@ -263,29 +270,40 @@ struct ArchiveMapView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .alert("使用成都演示位置？", isPresented: $showDemoOriginConfirmation) {
-            Button("取消", role: .cancel) {
-                pendingDemoRouteArchiveID = nil
+        .alert("使用参考位置预览路线？", isPresented: $showReferenceOriginConfirmation) {
+            Button("暂不预览", role: .cancel) {
+                pendingReferenceRouteArchiveID = nil
+                showToast("已取消路线预览，仍可查看档案位置", binding: $toastMessage)
             }
-            Button("开始路线预览") {
-                guard let archiveID = pendingDemoRouteArchiveID,
+            Button("使用参考位置") {
+                guard let archiveID = pendingReferenceRouteArchiveID,
                       let archive = store.archive(with: archiveID) else {
-                    pendingDemoRouteArchiveID = nil
+                    pendingReferenceRouteArchiveID = nil
                     return
                 }
-                pendingDemoRouteArchiveID = nil
+                pendingReferenceRouteArchiveID = nil
                 startXilianRoute(
                     to: archive,
-                    origin: XilianGuideOriginPolicy.chengduDemoCoordinate,
-                    usesDemoOrigin: true
+                    origin: XilianGuideOriginPolicy.chengduReferenceCoordinate,
+                    usesReferenceOrigin: true
                 )
             }
         } message: {
-            Text("当前不在成都档案范围或暂时无法取得定位。昔涟将使用成都演示位置预览路线，不代表你的实时位置。")
+            Text("当前位置不在档案活动范围，是否从参考位置预览？")
         }
         .navigationDestination(for: ArchiveDetailRoute.self) { route in
             if let archive = store.archive(with: route.archiveID) {
                 ArchiveDetailView(archive: archive, initialSection: route.initialSection)
+                    .onAppear {
+                        presentedDetailArchiveID = route.archiveID
+                        selectedArchiveID = route.archiveID
+                    }
+                    .onDisappear {
+                        guard presentedDetailArchiveID == route.archiveID else { return }
+                        presentedDetailArchiveID = nil
+                        selectedArchiveID = route.archiveID
+                        isMapCardCollapsed = false
+                    }
             }
         }
         .onReceive(locationManager.$currentCoordinate) { coordinate in
@@ -306,7 +324,11 @@ struct ArchiveMapView: View {
             checkPhysicalArrival(using: coordinate)
         }
         .onAppear {
-            focusMapIfNeeded(store.mapFocusRequest)
+            // 返回详情页时，底层地图可能会先收到 onAppear，再收到详情页的
+            // onDisappear。此时保持进入详情前的选中档案，避免旧聚焦请求闪回。
+            if presentedDetailArchiveID == nil {
+                focusMapIfNeeded(store.mapFocusRequest)
+            }
             liveLocationEnabled = true
             locationManager.requestAndStartUpdating()
             Task { @MainActor in
@@ -335,11 +357,33 @@ struct ArchiveMapView: View {
         .onDisappear {
             cancelXilianGuidance()
         }
+        .toolbar {
+            if store.selectedRole == .stallOwner {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        openArchiveBuilder()
+                    } label: {
+                        Label(
+                            store.currentUserArchives.isEmpty ? "AI 建档" : "修改名片",
+                            systemImage: store.currentUserArchives.isEmpty ? "sparkles" : "pencil"
+                        )
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 34)
+                        .background(Color.tanInk)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
+    @ViewBuilder
     private var topControls: some View {
-        HStack {
-            if store.selectedRole == .visitor {
+        if store.selectedRole == .visitor {
+            HStack {
                 Button {
                     showSearch = true
                 } label: {
@@ -362,31 +406,19 @@ struct ArchiveMapView: View {
                     }
                     .shadow(color: Color.tanInk.opacity(0.1), radius: 14, x: 0, y: 8)
                 }
+                Spacer()
             }
-
-            Spacer()
-
-            if store.selectedRole == .stallOwner {
-                Button {
-                    if let archive = store.currentUserArchives.first {
-                        archiveToEdit = archive
-                    } else {
-                        store.selectedTab = .build
-                    }
-                } label: {
-                    Label(store.currentUserArchives.isEmpty ? "AI 建档" : "修改名片", systemImage: store.currentUserArchives.isEmpty ? "sparkles" : "pencil")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .frame(height: 46)
-                        .background(Color.tanInk)
-                        .clipShape(Capsule())
-                        .shadow(color: Color.tanInk.opacity(0.18), radius: 12, x: 0, y: 8)
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
+    }
+
+    private func openArchiveBuilder() {
+        if let archive = store.currentUserArchives.first {
+            archiveToEdit = archive
+        } else {
+            store.selectedTab = .build
+        }
     }
 
     private func openPendingArchiveWithLocation() {
@@ -409,9 +441,9 @@ struct ArchiveMapView: View {
     }
 
     private func focusMapIfNeeded(_ request: MapFocusRequest?) {
-        guard let request, let archive = store.archive(with: request.archiveID) else {
-            return
-        }
+        guard let request else { return }
+        defer { store.consumeMapFocusRequest(request) }
+        guard let archive = store.archive(with: request.archiveID) else { return }
         cancelXilianGuidance()
         selectedArchiveID = archive.id
         focusCoordinate = archive.currentLocation.coordinate
@@ -435,24 +467,24 @@ struct ArchiveMapView: View {
 
     private func requestXilianRoute(to archive: CityArchive) {
         let decision = XilianGuideOriginPolicy.decision(for: locationManager.currentCoordinate)
-        if decision.source == .chengduDemoLocation {
+        if decision.source == .chengduReferenceLocation {
             cancelXilianGuidance()
-            pendingDemoRouteArchiveID = archive.id
-            showDemoOriginConfirmation = true
+            pendingReferenceRouteArchiveID = archive.id
+            showReferenceOriginConfirmation = true
             return
         }
-        startXilianRoute(to: archive, origin: decision.coordinate, usesDemoOrigin: false)
+        startXilianRoute(to: archive, origin: decision.coordinate, usesReferenceOrigin: false)
     }
 
     private func startXilianRoute(
         to archive: CityArchive,
         origin userCoordinate: CLLocationCoordinate2D,
-        usesDemoOrigin: Bool
+        usesReferenceOrigin: Bool
     ) {
         guard store.selectedRole == .visitor else { return }
         cancelXilianGuidance()
         arrivedArchiveIDs.remove(archive.id)
-        usesDemoGuideOrigin = usesDemoOrigin
+        usesReferenceGuideOrigin = usesReferenceOrigin
         liveLocationEnabled = true
         locationManager.requestAndStartUpdating()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
@@ -468,7 +500,9 @@ struct ArchiveMapView: View {
             message: "昔涟正在前往摊位…"
         )
         showToast(
-            usesDemoOrigin ? "已使用成都演示位置预览路线" : "昔涟正在沿真实位置规划路线…",
+            usesReferenceOrigin
+                ? "正在从档案范围内参考位置规划路线"
+                : "昔涟正在沿真实位置规划路线…",
             binding: $toastMessage
         )
 
@@ -490,7 +524,7 @@ struct ArchiveMapView: View {
                     from: userCoordinate,
                     to: destination
                 )
-                showToast("未能规划真实步行路线，以下为演示方向线。", binding: $toastMessage)
+                showToast("未能规划真实步行路线，以下为方向参考线（非真实步行路线）。", binding: $toastMessage)
             }
 
             guard !Task.isCancelled, selectedArchiveID == archive.id else { return }
@@ -514,9 +548,9 @@ struct ArchiveMapView: View {
         xilianRoutePlanner.cancel()
         xilianRouteController.clear()
         xilianRouteCoordinates = []
-        usesDemoGuideOrigin = false
-        pendingDemoRouteArchiveID = nil
-        showDemoOriginConfirmation = false
+        usesReferenceGuideOrigin = false
+        pendingReferenceRouteArchiveID = nil
+        showReferenceOriginConfirmation = false
         dismissArrivalCard()
     }
 
@@ -567,7 +601,7 @@ struct ArchiveMapView: View {
     }
 
     private func xilianArrivalState(for archive: CityArchive) -> XilianAnimationState {
-        archive.status == .atRisk ? .worried : .happy
+        archive.presentationStatus == .atRisk ? .worried : .happy
     }
 
     private func checkPhysicalArrival(using coordinate: CLLocationCoordinate2D) {
@@ -656,7 +690,7 @@ private struct XilianArrivalCard: View {
                 .padding(.bottom, 2)
 
             HStack(alignment: .center, spacing: 12) {
-                XilianMapSpriteView(state: archive.status == .atRisk ? .worried : .happy, height: 56)
+                XilianMapSpriteView(state: archive.presentationStatus == .atRisk ? .worried : .happy, height: 56)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("昔涟")
@@ -750,7 +784,7 @@ private struct XilianArrivalCard: View {
     }
 
     private var statusIntro: String {
-        switch archive.status {
+        switch archive.presentationStatus {
         case .open:
             return "这个摊最近还在营业，可以看看它的故事。"
         case .atRisk:
@@ -768,12 +802,12 @@ private struct XilianArrivalCard: View {
     }
 
     private var statusTag: some View {
-        Label(archive.status.title, systemImage: archive.status.icon)
+        Label(archive.presentationStatus.title, systemImage: archive.presentationStatus.icon)
             .font(.system(size: 12, weight: .black))
-            .foregroundStyle(archive.status.tint)
+            .foregroundStyle(archive.presentationStatus.tint)
             .padding(.horizontal, 11)
             .frame(height: 32)
-            .background(archive.status.tint.opacity(0.12))
+            .background(archive.presentationStatus.tint.opacity(0.12))
             .clipShape(Capsule())
     }
 
@@ -845,19 +879,15 @@ private struct ArchiveMapCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: isCollapsed ? 8 : 14) {
-            Capsule()
-                .fill(Color.black.opacity(0.16))
-                .frame(width: 38, height: 5)
-                .frame(maxWidth: .infinity)
-                .padding(.bottom, isCollapsed ? 0 : 2)
-
             if isCollapsed {
                 collapsedContent
             } else {
                 expandedContent
             }
         }
-        .padding(isCollapsed ? 14 : 18)
+        .padding(.horizontal, isCollapsed ? 14 : 18)
+        .padding(.bottom, isCollapsed ? 14 : 18)
+        .padding(.top, isCollapsed ? 28 : 39)
         .background(.ultraThinMaterial)
         .background(Color.white.opacity(0.92))
         .clipShape(RoundedRectangle(cornerRadius: isCollapsed ? TanRadius.medium : TanRadius.large, style: .continuous))
@@ -866,9 +896,28 @@ private struct ArchiveMapCard: View {
                 .stroke(Color.white.opacity(0.8), lineWidth: 1)
         }
         .shadow(color: Color.tanInk.opacity(isCollapsed ? 0.12 : 0.18), radius: isCollapsed ? 14 : 24, x: 0, y: isCollapsed ? 8 : 12)
+        .overlay(alignment: .top) {
+            cardHandle
+        }
         .offset(y: isCollapsed ? max(0, dragOffset * 0.25) : max(0, dragOffset))
         .simultaneousGesture(cardDragGesture)
         .animation(.spring(response: 0.3, dampingFraction: 0.86), value: isCollapsed)
+    }
+
+    private var cardHandle: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            Capsule()
+                .fill(Color.black.opacity(0.16))
+                .frame(width: 38, height: 5)
+                .frame(width: 120, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isCollapsed ? "展开名片" : "收起名片")
     }
 
     private var collapsedContent: some View {
@@ -906,7 +955,7 @@ private struct ArchiveMapCard: View {
                         .foregroundStyle(.secondary)
                     HStack {
                         TagPill(text: archive.category.title)
-                        StatusBadge(status: archive.status)
+                        StatusBadge(status: archive.presentationStatus)
                     }
                 }
                 Spacer()
@@ -923,7 +972,7 @@ private struct ArchiveMapCard: View {
                     .accessibilityLabel("查看 \(archive.name) 档案")
 
                     Button(action: onDismiss) {
-                        Image(systemName: "chevron.down")
+                        Image(systemName: "xmark")
                             .font(.system(size: 13, weight: .black))
                             .foregroundStyle(Color.tanInk.opacity(0.68))
                             .frame(width: 38, height: 38)
@@ -932,7 +981,7 @@ private struct ArchiveMapCard: View {
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("收起名片")
+                    .accessibilityLabel("关闭名片并取消路线")
                 }
             }
 
@@ -1159,7 +1208,7 @@ private struct ArchiveSearchResultRow: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Circle()
-                    .fill(archive.status.tint)
+                    .fill(archive.presentationStatus.tint)
                     .frame(width: 14, height: 14)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -1172,7 +1221,7 @@ private struct ArchiveSearchResultRow: View {
                 }
 
                 Spacer()
-                StatusBadge(status: archive.status)
+                StatusBadge(status: archive.presentationStatus)
             }
             .padding(12)
             .background(Color.white)
@@ -1599,7 +1648,7 @@ private struct ArchiveMapRepresentable: UIViewRepresentable {
             view.layer.cornerRadius = 13
             view.layer.borderWidth = 3
             view.layer.borderColor = UIColor.white.cgColor
-            view.backgroundColor = UIColor(annotation.archive.status.tint)
+            view.backgroundColor = UIColor(annotation.archive.presentationStatus.tint)
             return view
         }
 

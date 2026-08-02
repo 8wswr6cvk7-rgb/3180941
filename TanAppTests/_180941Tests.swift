@@ -23,6 +23,8 @@ struct _180941Tests {
         #expect(seed.first?.name == "张大爷糖油果子")
         #expect(seed.contains(where: { $0.name == "李爷爷三大炮" && $0.status == .atRisk }))
         #expect(seed.first?.statusConfirmations.isEmpty == false)
+        #expect(seed.first?.attentionAssessment.level == .stable)
+        #expect(seed.first(where: { $0.name == "李爷爷三大炮" })?.attentionAssessment.level == .atRisk)
         #expect(seed.allSatisfy { $0.photos.first?.attachment?.bundledResourceName != nil })
         #expect(seed.first?.photos.count == 3)
         #expect(seed.first?.statusConfirmations.first?.attachment?.bundledResourceName == "seed_zhang_status.jpg")
@@ -35,7 +37,7 @@ struct _180941Tests {
         #expect(image != nil)
     }
 
-    @Test @MainActor func roleLoginOpensTheCompetitionEntryTab() async throws {
+    @Test @MainActor func roleLoginAlwaysOpensMap() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = ArchiveStore(
@@ -44,7 +46,7 @@ struct _180941Tests {
         )
 
         store.login(as: .visitor)
-        #expect(store.selectedTab == .discover)
+        #expect(store.selectedTab == .map)
         store.switchRole(to: .stallOwner)
         #expect(store.selectedTab == .map)
         store.switchRole(to: .visitor)
@@ -56,6 +58,22 @@ struct _180941Tests {
         #expect(ArchiveDetailRoute.top(archiveID).initialSection == .top)
         #expect(ArchiveDetailRoute.community(archiveID).initialSection == .community)
         #expect(ArchiveDetailRoute.community(archiveID).archiveID == archiveID)
+    }
+
+    @Test @MainActor func mapFocusRequestIsConsumedOnlyOnce() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ArchiveStore(
+            repository: LocalArchiveRepository(rootURL: directory),
+            photoStorage: LocalPhotoStorageService(rootURL: directory)
+        )
+        let archive = try #require(store.archives.first)
+
+        store.navigateToArchiveOnMap(archive)
+        let request = try #require(store.mapFocusRequest)
+        store.consumeMapFocusRequest(request)
+
+        #expect(store.mapFocusRequest == nil)
     }
 
     @Test @MainActor func discoveryKeywordsAndAvailableCategoriesHaveResults() async throws {
@@ -116,8 +134,97 @@ struct _180941Tests {
         let beijing = CLLocationCoordinate2D(latitude: 39.90, longitude: 116.40)
 
         #expect(XilianGuideOriginPolicy.decision(for: chengdu).source == .liveLocation)
-        #expect(XilianGuideOriginPolicy.decision(for: beijing).source == .chengduDemoLocation)
-        #expect(XilianGuideOriginPolicy.decision(for: nil).source == .chengduDemoLocation)
+        #expect(XilianGuideOriginPolicy.decision(for: beijing).source == .chengduReferenceLocation)
+        #expect(XilianGuideOriginPolicy.decision(for: nil).source == .chengduReferenceLocation)
+    }
+
+    @Test func disappearanceRiskUsesExplainableCommunitySignals() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        var archive = try #require(MockArchiveData.competitionSeedArchives.first)
+        archive.status = .closed
+        archive.statusConfirmations = [
+            StallStatusConfirmation(
+                contributorName: "甲",
+                result: .notSeen,
+                clue: "未见",
+                createdAt: now.addingTimeInterval(-7 * 86_400)
+            ),
+            StallStatusConfirmation(
+                contributorName: "乙",
+                result: .notSeen,
+                clue: "未见",
+                createdAt: now.addingTimeInterval(-20 * 86_400)
+            ),
+            StallStatusConfirmation(
+                contributorName: "丙",
+                result: .stillThere,
+                clue: "曾见",
+                createdAt: now.addingTimeInterval(-75 * 86_400)
+            )
+        ]
+
+        let assessment = ArchiveDisappearanceRiskEvaluator.evaluate(archive, now: now)
+        #expect(assessment.level == .atRisk)
+        #expect(assessment.reasons.contains { $0.contains("2 次暂未见到") })
+    }
+
+    @Test func recentStillThereClearsDerivedDisappearanceRisk() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        var archive = try #require(MockArchiveData.competitionSeedArchives.first)
+        archive.status = .atRisk
+        archive.statusConfirmations = [
+            StallStatusConfirmation(
+                contributorName: "甲",
+                result: .stillThere,
+                clue: "今天看到了",
+                createdAt: now.addingTimeInterval(-86_400)
+            ),
+            StallStatusConfirmation(
+                contributorName: "乙",
+                result: .notSeen,
+                clue: "之前未见",
+                createdAt: now.addingTimeInterval(-10 * 86_400)
+            )
+        ]
+
+        let assessment = ArchiveDisappearanceRiskEvaluator.evaluate(archive, now: now)
+        #expect(assessment.level == .stable)
+    }
+
+    @Test func locationChangeProducesWatchInsteadOfDisappearanceClaim() async throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        var archive = try #require(MockArchiveData.competitionSeedArchives.first)
+        archive.status = .closed
+        archive.statusConfirmations = [
+            StallStatusConfirmation(
+                contributorName: "甲",
+                result: .locationChanged,
+                clue: "位置变了",
+                createdAt: now.addingTimeInterval(-3 * 86_400)
+            )
+        ]
+
+        let assessment = ArchiveDisappearanceRiskEvaluator.evaluate(archive, now: now)
+        #expect(assessment.level == .watch)
+    }
+
+    @Test @MainActor func newArchiveUsesTheSuppliedLiveCoordinate() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ArchiveStore(
+            repository: LocalArchiveRepository(rootURL: directory),
+            photoStorage: LocalPhotoStorageService(rootURL: directory)
+        )
+        await Task.yield()
+        let draft = AIArchiveDraft(archive: try #require(store.archives.first))
+        let coordinate = CLLocationCoordinate2D(latitude: 30.7123, longitude: 104.0812)
+
+        try await store.saveDraft(draft, coverImage: nil, at: coordinate)
+
+        let saved = try #require(store.archives.first)
+        #expect(saved.isUserCreated)
+        #expect(abs(saved.currentLocation.latitude - coordinate.latitude) < 0.000_001)
+        #expect(abs(saved.currentLocation.longitude - coordinate.longitude) < 0.000_001)
     }
 
     @Test func xilianQuickQuestionKeepsLocalFallback() async throws {
@@ -331,6 +438,66 @@ struct _180941Tests {
         #expect(deletedImage == nil)
     }
 
+    @Test func localPhotoStorageKeepsIPhonePortraitAspectRatio() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = LocalPhotoStorageService(rootURL: directory)
+        let portrait = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 400)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 300, height: 400))
+        }
+
+        let attachment = try await storage.saveImage(portrait, caption: "iPhone 竖拍")
+        let restored = try #require(await storage.loadImage(attachment, thumbnail: false))
+        #expect(abs((restored.size.width / restored.size.height) - 0.75) < 0.01)
+    }
+
+    @Test func localPhotoStorageCopiesLoadsAndDeletesVideoWithThumbnail() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let sourceURL = directory.appendingPathComponent("source.mov")
+        try Data([0, 1, 2, 3]).write(to: sourceURL)
+        let thumbnail = UIGraphicsImageRenderer(size: CGSize(width: 400, height: 300)).image { context in
+            UIColor.purple.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 400, height: 300))
+        }
+        let storage = LocalPhotoStorageService(
+            rootURL: directory.appendingPathComponent("Storage", isDirectory: true)
+        )
+
+        let attachment = try await storage.saveVideo(
+            at: sourceURL,
+            thumbnail: thumbnail,
+            caption: "测试视频"
+        )
+        #expect(attachment.resolvedMediaType == .video)
+        #expect(await storage.loadImage(attachment, thumbnail: true) != nil)
+        let storedURL = try #require(await storage.loadVideoURL(attachment))
+        #expect(FileManager.default.fileExists(atPath: storedURL.path))
+
+        try await storage.deletePhoto(attachment)
+        #expect(await storage.loadVideoURL(attachment) == nil)
+        #expect(await storage.loadImage(attachment, thumbnail: true) == nil)
+    }
+
+    @Test func photoAttachmentWithoutMediaTypeStillDecodesAsImage() throws {
+        let original = PhotoAttachment(
+            localFilename: "legacy.jpg",
+            thumbnailFilename: "legacy_thumb.jpg"
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(PhotoAttachment.self, from: data)
+        #expect(decoded.resolvedMediaType == .image)
+    }
+
+    @Test func attachmentPreviewStylesUseStableCardRatios() {
+        #expect(abs(AttachmentPreviewStyle.photo4x3.aspectRatio - (4.0 / 3.0)) < 0.000_1)
+        #expect(abs(AttachmentPreviewStyle.square.aspectRatio - 1.0) < 0.000_1)
+    }
+
     @Test func commentsLimitAttachmentsToThree() async throws {
         let attachments = (0..<4).map { index in
             PhotoAttachment(
@@ -364,6 +531,59 @@ struct _180941Tests {
             ) == "我在玉林路出摊。已经二十多年"
         )
         #expect(SpeechTranscriptMerger.merge(existing: "原有文字", transcript: "   ") == "原有文字")
+    }
+
+    @Test func archiveVisionParserKeepsOnlyVisibleAndUncertainClues() throws {
+        let response = """
+        ```json
+        {
+          "categoryHint": "传统小吃摊",
+          "visibleItems": ["圆形油炸面点", "芝麻", "圆形油炸面点"],
+          "craftClues": ["竹签翻动", "油锅加热"],
+          "environmentClues": ["街边摊车"],
+          "uncertainties": ["具体小吃名称需要摊主确认"]
+        }
+        ```
+        """
+
+        let hints = try QwenArchiveVisionResponseParser.parse(response)
+
+        #expect(hints.categoryHint == "传统小吃摊")
+        #expect(hints.visibleItems == ["圆形油炸面点", "芝麻"])
+        #expect(hints.craftClues == ["竹签翻动", "油锅加热"])
+        #expect(hints.agentContext.contains("不得据此推断人物身份"))
+        #expect(hints.agentContext.contains("具体小吃名称需要摊主确认"))
+    }
+
+    @Test func archiveVisionImageEncoderLimitsLongEdgeAndUsesJPEGDataURL() throws {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 2_400, height: 1_600)).image { context in
+            UIColor.orange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 2_400, height: 1_600))
+        }
+
+        let dataURL = try ArchiveVisionImageEncoder.dataURL(from: source)
+        #expect(dataURL.hasPrefix("data:image/jpeg;base64,"))
+
+        let base64 = String(dataURL.dropFirst("data:image/jpeg;base64,".count))
+        let data = try #require(Data(base64Encoded: base64))
+        let encodedImage = try #require(UIImage(data: data))
+        #expect(max(encodedImage.size.width, encodedImage.size.height) <= 1_280)
+    }
+
+    @Test func dashScopeConfigurationUsesVisionDefaultWithoutSnapshotMigration() throws {
+        let json = """
+        {
+          "dashscopeAPIKey": "local-test-key",
+          "qwenModel": "qwen-plus",
+          "funASRModel": "fun-asr-realtime"
+        }
+        """
+        let configuration = try JSONDecoder().decode(
+            LocalDashScopeConfiguration.self,
+            from: Data(json.utf8)
+        )
+
+        #expect(configuration.visionModelName == "qwen-vl-plus")
     }
 
     @Test @MainActor func speechRecognitionControllerAcceptsPartialAndFinalResults() async {
@@ -407,6 +627,143 @@ struct _180941Tests {
         #expect(controller.state == .idle)
         #expect(controller.completion?.text == "最后一段有效转写")
         #expect(controller.liveTranscript.isEmpty)
+    }
+
+    @Test func appUserDecodesSnapshotsCreatedBeforeAvatarSupport() throws {
+        let json = """
+        {
+          "id": "A0000000-0000-0000-0000-000000000001",
+          "name": "阿棠",
+          "role": "visitor",
+          "points": 1260,
+          "rank": "成都第 12 名"
+        }
+        """
+        let user = try JSONDecoder().decode(AppUser.self, from: Data(json.utf8))
+        #expect(user.avatarAttachment == nil)
+    }
+
+    @Test @MainActor func profileRenameKeepsExistingContributionsOwnedByCurrentUser() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ArchiveStore(
+            repository: LocalArchiveRepository(rootURL: directory),
+            photoStorage: LocalPhotoStorageService(rootURL: directory)
+        )
+        await Task.yield()
+        store.login(as: .visitor)
+        let archive = try #require(store.archives.first)
+        try await store.addComment(to: archive, text: "我补充的线索", pendingImages: [])
+
+        try await store.updateProfile(
+            name: "新昵称",
+            avatarImage: nil,
+            removeExistingAvatar: false
+        )
+
+        let updated = try #require(store.archive(with: archive.id))
+        #expect(updated.comments.first?.contributorName == "新昵称")
+        #expect(store.user.name == "新昵称")
+    }
+
+    @Test func funASRServerEnvelopeAcceptsOfficialAndPartialResultShapes() throws {
+        let finalJSON = """
+        {
+          "header": {
+            "task_id": "task-1",
+            "event": "result-generated",
+            "attributes": {}
+          },
+          "payload": {
+            "output": {
+              "sentence": {
+                "text": "好，我知道了",
+                "heartbeat": false,
+                "sentence_end": true,
+                "sentence_id": 1
+              }
+            }
+          }
+        }
+        """
+        let partialJSON = """
+        {
+          "header": {
+            "task_id": "task-1",
+            "event": "result-generated"
+          },
+          "payload": {
+            "output": {
+              "sentence": {
+                "text": "我在玉林路",
+                "sentence_id": 2
+              }
+            }
+          }
+        }
+        """
+        let finalEvent = try JSONDecoder().decode(
+            DashScopeSpeechServerEnvelope.self,
+            from: Data(finalJSON.utf8)
+        )
+        let partialEvent = try JSONDecoder().decode(
+            DashScopeSpeechServerEnvelope.self,
+            from: Data(partialJSON.utf8)
+        )
+        #expect(finalEvent.payload?.output?.sentence?.sentenceEnd == true)
+        #expect(finalEvent.payload?.output?.sentence?.text == "好，我知道了")
+        #expect(partialEvent.payload?.output?.sentence?.heartbeat == false)
+        #expect(partialEvent.payload?.output?.sentence?.sentenceEnd == false)
+    }
+
+    @Test @MainActor func speechRecognitionReportsAudioAndEmptyCompletion() async {
+        let service = FakeSpeechRecognitionService()
+        let controller = SpeechRecognitionController(service: service)
+
+        controller.start(dialect: .mandarin)
+        service.emit(.ready)
+        service.emit(.audioActivity(level: 0.2, totalBytes: 3_200))
+        await Task.yield()
+        #expect(controller.hasReceivedTaskStarted)
+        #expect(controller.hasDetectedVoice)
+        #expect(controller.sentAudioBytes == 3_200)
+
+        service.emit(.finished)
+        await Task.yield()
+        #expect(controller.state == .failed)
+        #expect(controller.failure == .noSpeechDetected)
+    }
+
+    @Test @MainActor func speechRecognitionDistinguishesMissingMicrophoneData() async {
+        let service = FakeSpeechRecognitionService()
+        let controller = SpeechRecognitionController(service: service)
+
+        controller.start(dialect: .mandarin)
+        service.emit(.ready)
+        await Task.yield()
+        #expect(controller.captureStatusText == "正在等待麦克风数据")
+
+        service.emit(.finished)
+        await Task.yield()
+        #expect(controller.state == .failed)
+        #expect(controller.failure == .microphoneSilent)
+    }
+
+    @Test @MainActor func consumingSpeechCompletionClearsTransientStatus() async throws {
+        let service = FakeSpeechRecognitionService()
+        let controller = SpeechRecognitionController(service: service)
+
+        controller.start(dialect: .chengdu)
+        service.emit(.ready)
+        service.emit(.partial(sentenceID: 0, text: "我在玉林路摆摊"))
+        service.emit(.finished)
+        await Task.yield()
+
+        #expect(controller.completion?.text == "我在玉林路摆摊")
+        controller.consumeCompletion()
+        #expect(controller.completion == nil)
+        #expect(controller.liveTranscript.isEmpty)
+        #expect(controller.sentAudioBytes == 0)
     }
 
 }

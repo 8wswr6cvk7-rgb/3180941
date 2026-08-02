@@ -63,6 +63,8 @@ enum SpeechRecognitionFailure: Equatable, Error {
     case missingAPIKey
     case microphoneUnavailable
     case networkUnavailable
+    case noSpeechDetected
+    case microphoneSilent
     case serviceUnavailable
 
     var message: String {
@@ -75,6 +77,14 @@ enum SpeechRecognitionFailure: Equatable, Error {
             return "麦克风暂时不可用，请稍后重试或继续打字。"
         case .networkUnavailable:
             return "语音识别暂时无法连接，可继续打字或重试。"
+        case .noSpeechDetected:
+            return "没有识别到有效语音，请靠近麦克风后重试。"
+        case .microphoneSilent:
+#if targetEnvironment(simulator)
+            return "模拟器没有收到麦克风声音，请在“输入/输出”中选择 Mac 麦克风后重试。"
+#else
+            return "麦克风没有收到声音，请检查输入设备后重试。"
+#endif
         case .serviceUnavailable:
             return "语音识别暂时不可用，可继续打字或重试。"
         }
@@ -88,6 +98,7 @@ enum SpeechRecognitionFailure: Equatable, Error {
 enum SpeechRecognitionEvent: Equatable {
     case connecting
     case ready
+    case audioActivity(level: Float, totalBytes: Int)
     case partial(sentenceID: Int, text: String)
     case final(sentenceID: Int, text: String)
     case finished
@@ -130,6 +141,12 @@ final class SpeechRecognitionController: ObservableObject {
     @Published private(set) var elapsedSeconds = 0
     @Published private(set) var completion: SpeechRecognitionCompletion?
     @Published private(set) var failure: SpeechRecognitionFailure?
+    @Published private(set) var audioLevel: Float = 0
+    @Published private(set) var sentAudioBytes = 0
+    @Published private(set) var hasReceivedTaskStarted = false
+    @Published private(set) var hasReceivedResult = false
+    @Published private(set) var hasDetectedVoice = false
+    @Published private(set) var warningText: String?
 
     private let service: SpeechRecognitionService
     private var finalizedSentences: [Int: String] = [:]
@@ -166,6 +183,17 @@ final class SpeechRecognitionController: ObservableObject {
         }
     }
 
+    var captureStatusText: String? {
+        guard state == .listening else { return nil }
+        if sentAudioBytes == 0 {
+            return "正在等待麦克风数据"
+        }
+        if hasDetectedVoice {
+            return hasReceivedResult ? "已收到识别文字" : "已采集到声音"
+        }
+        return "麦克风已连接，等待你开口"
+    }
+
     func start(dialect: ArchiveDialect) {
         guard !state.isBusy else { return }
         resetTranscript()
@@ -195,6 +223,7 @@ final class SpeechRecognitionController: ObservableObject {
 
     func consumeCompletion() {
         completion = nil
+        resetTranscript()
     }
 
     private var formattedDuration: String {
@@ -206,20 +235,39 @@ final class SpeechRecognitionController: ObservableObject {
         case .connecting:
             state = .connecting
         case .ready:
+            hasReceivedTaskStarted = true
             state = .listening
             startTimer()
+        case let .audioActivity(level, totalBytes):
+            audioLevel = level
+            sentAudioBytes = totalBytes
+            if level >= 0.012 {
+                hasDetectedVoice = true
+                warningText = nil
+            }
         case let .partial(sentenceID, text):
+            hasReceivedResult = true
+            warningText = nil
             partialSentences[sentenceID] = text
             refreshTranscript()
         case let .final(sentenceID, text):
+            hasReceivedResult = true
+            warningText = nil
             finalizedSentences[sentenceID] = text
             partialSentences.removeValue(forKey: sentenceID)
             refreshTranscript()
         case .finished:
             stopTimer()
             publishCompletionIfNeeded()
-            state = .idle
-            failure = nil
+            if liveTranscript.isEmpty {
+                failure = sentAudioBytes == 0 || !hasDetectedVoice
+                    ? .microphoneSilent
+                    : .noSpeechDetected
+                state = .failed
+            } else {
+                state = .idle
+                failure = nil
+            }
         case let .failed(error):
             stopTimer()
             publishCompletionIfNeeded()
@@ -236,6 +284,20 @@ final class SpeechRecognitionController: ObservableObject {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard !Task.isCancelled, let self else { return }
                 self.elapsedSeconds += 1
+                if self.elapsedSeconds >= 5,
+                   !self.hasReceivedResult {
+                    if self.sentAudioBytes == 0 {
+#if targetEnvironment(simulator)
+                        self.warningText = "没有收到音频数据，请确认模拟器已选择 Mac 麦克风。"
+#else
+                        self.warningText = "没有收到音频数据，请检查麦克风后重试。"
+#endif
+                    } else if !self.hasDetectedVoice {
+                        self.warningText = "未检测到声音，请靠近麦克风后重试。"
+                    } else {
+                        self.warningText = "已采集到声音，正在等待识别文字…"
+                    }
+                }
                 if self.elapsedSeconds >= 60 {
                     self.stop()
                     return
@@ -269,6 +331,12 @@ final class SpeechRecognitionController: ObservableObject {
         partialSentences = [:]
         liveTranscript = ""
         elapsedSeconds = 0
+        audioLevel = 0
+        sentAudioBytes = 0
+        hasReceivedTaskStarted = false
+        hasReceivedResult = false
+        hasDetectedVoice = false
+        warningText = nil
     }
 }
 
@@ -285,6 +353,9 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
     private var pendingStartID: UUID?
     private var isActive = false
     private var isFinishing = false
+    private var sentAudioByteCount = 0
+    private var hasReceivedAudioBuffer = false
+    private var captureWatchdog: DispatchWorkItem?
 
     func start(dialect: ArchiveDialect) {
         queue.async { [weak self] in
@@ -345,6 +416,8 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
         pendingStartID = nil
         isActive = true
         isFinishing = false
+        sentAudioByteCount = 0
+        hasReceivedAudioBuffer = false
         let identifier = UUID().uuidString.lowercased()
         taskID = identifier
 
@@ -410,16 +483,22 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
             return
         }
 
-        guard let event = try? JSONDecoder().decode(DashScopeSpeechServerEvent.self, from: data),
-              event.header.taskID == taskID else {
+        guard let envelope = try? JSONDecoder().decode(DashScopeSpeechServerEnvelope.self, from: data),
+              envelope.header.taskID == taskID else {
+#if DEBUG
+            print("[ASR] 收到无法解析或任务不匹配的服务端事件")
+#endif
             return
         }
 
-        switch event.header.event {
+        switch envelope.header.event {
         case "task-started":
+#if DEBUG
+            print("[ASR] task-started")
+#endif
             startAudioCapture()
         case "result-generated":
-            guard let sentence = event.payload?.output?.sentence,
+            guard let sentence = envelope.payload?.output?.sentence,
                   !sentence.heartbeat,
                   !sentence.text.isEmpty else {
                 return
@@ -430,8 +509,14 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
                 emit(.partial(sentenceID: sentence.sentenceID, text: sentence.text))
             }
         case "task-finished":
+#if DEBUG
+            print("[ASR] task-finished")
+#endif
             tearDown(closeCode: .normalClosure, shouldEmitFinished: true)
         case "task-failed":
+#if DEBUG
+            print("[ASR] task-failed: \(envelope.header.errorCode ?? "UNKNOWN")")
+#endif
             fail(with: .serviceUnavailable)
         default:
             break
@@ -445,6 +530,14 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
                 guard let self else { return }
                 self.queue.async {
                     guard self.isActive, !self.isFinishing, let socket = self.webSocketTask else { return }
+                    self.hasReceivedAudioBuffer = true
+                    self.sentAudioByteCount += data.count
+                    self.emit(
+                        .audioActivity(
+                            level: Self.normalizedAudioLevel(in: data),
+                            totalBytes: self.sentAudioByteCount
+                        )
+                    )
                     socket.send(.data(data)) { [weak self] error in
                         guard let error else { return }
                         self?.queue.async {
@@ -455,9 +548,25 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
                 }
             }
             emit(.ready)
+            scheduleCaptureWatchdog()
         } catch {
             fail(with: .microphoneUnavailable)
         }
+    }
+
+    private func scheduleCaptureWatchdog() {
+        captureWatchdog?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.isActive,
+                  !self.isFinishing,
+                  !self.hasReceivedAudioBuffer else {
+                return
+            }
+            self.fail(with: .microphoneSilent)
+        }
+        captureWatchdog = workItem
+        queue.asyncAfter(deadline: .now() + 4, execute: workItem)
     }
 
     private func finishTask() {
@@ -509,6 +618,8 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
         closeCode: URLSessionWebSocketTask.CloseCode,
         shouldEmitFinished: Bool = false
     ) {
+        captureWatchdog?.cancel()
+        captureWatchdog = nil
         audioCapture.stop()
         webSocketTask?.cancel(with: closeCode, reason: nil)
         session?.invalidateAndCancel()
@@ -528,6 +639,20 @@ final class DashScopeSpeechRecognitionService: SpeechRecognitionService {
             self?.eventHandler?(event)
         }
     }
+
+    private static func normalizedAudioLevel(in data: Data) -> Float {
+        guard data.count >= MemoryLayout<Int16>.size else { return 0 }
+        return data.withUnsafeBytes { rawBuffer in
+            let samples = rawBuffer.bindMemory(to: Int16.self)
+            guard !samples.isEmpty else { return 0 }
+            var sum: Double = 0
+            for sample in samples {
+                let normalized = Double(sample) / Double(Int16.max)
+                sum += normalized * normalized
+            }
+            return Float(min(1, sqrt(sum / Double(samples.count)) * 5))
+        }
+    }
 }
 
 private enum DashScopeSpeechCommand {
@@ -536,9 +661,7 @@ private enum DashScopeSpeechCommand {
         model: String,
         dialect: ArchiveDialect
     ) throws -> String {
-        let contextText = """
-        成都街巷摊位档案常用词：摊主、出摊、糖油果子、三大炮、糖画、蜀绣、补鞋、修补、老手艺。\(dialect.contextHint)
-        """
+        _ = dialect
         let object: [String: Any] = [
             "header": [
                 "action": "run-task",
@@ -552,36 +675,9 @@ private enum DashScopeSpeechCommand {
                 "model": model,
                 "parameters": [
                     "format": "pcm",
-                    "sample_rate": 16_000,
-                    "language_hints": ["zh"],
-                    "semantic_punctuation_enabled": false,
-                    "max_sentence_silence": 1_200,
-                    "multi_threshold_mode_enabled": true,
-                    "heartbeat": false,
-                    "speech_noise_threshold": 0.0
+                    "sample_rate": 16_000
                 ],
-                "input": [
-                    "context": [
-                        [
-                            "role": "user",
-                            "content": [
-                                [
-                                    "type": "input_text",
-                                    "text": contextText
-                                ]
-                            ]
-                        ],
-                        [
-                            "role": "assistant",
-                            "content": [
-                                [
-                                    "type": "text",
-                                    "text": "请准确转写摊主关于人物、手艺、地点和街巷故事的口述。"
-                                ]
-                            ]
-                        ]
-                    ]
-                ]
+                "input": [:] as [String: String]
             ]
         ]
         return try jsonString(from: object)
@@ -611,17 +707,21 @@ private enum DashScopeSpeechCommand {
     }
 }
 
-private struct DashScopeSpeechServerEvent: Decodable {
+struct DashScopeSpeechServerEnvelope: Decodable {
     var header: Header
     var payload: Payload?
 
     struct Header: Decodable {
         var taskID: String
         var event: String
+        var errorCode: String?
+        var errorMessage: String?
 
         enum CodingKeys: String, CodingKey {
             case taskID = "task_id"
             case event
+            case errorCode = "error_code"
+            case errorMessage = "error_message"
         }
     }
 
@@ -645,6 +745,14 @@ private struct DashScopeSpeechServerEvent: Decodable {
             case sentenceEnd = "sentence_end"
             case sentenceID = "sentence_id"
         }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+            heartbeat = try container.decodeIfPresent(Bool.self, forKey: .heartbeat) ?? false
+            sentenceEnd = try container.decodeIfPresent(Bool.self, forKey: .sentenceEnd) ?? false
+            sentenceID = try container.decodeIfPresent(Int.self, forKey: .sentenceID) ?? 0
+        }
     }
 }
 
@@ -657,11 +765,27 @@ private final class PCM16AudioCapture {
         guard !isRunning else { return }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.record, mode: .measurement, options: [.allowBluetoothHFP])
+        try session.setCategory(
+            .playAndRecord,
+            mode: .measurement,
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
+        )
+        if session.preferredInput == nil,
+           let builtInMicrophone = session.availableInputs?.first(where: {
+               $0.portType == .builtInMic
+           }) {
+            try? session.setPreferredInput(builtInMicrophone)
+        }
         try session.setPreferredSampleRate(16_000)
         try session.setPreferredIOBufferDuration(0.1)
         try session.setActive(true)
 
+        guard !session.currentRoute.inputs.isEmpty else {
+            throw SpeechRecognitionFailure.microphoneUnavailable
+        }
+
+        engine.stop()
+        engine.reset()
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0,
@@ -670,7 +794,7 @@ private final class PCM16AudioCapture {
                 commonFormat: .pcmFormatInt16,
                 sampleRate: 16_000,
                 channels: 1,
-                interleaved: false
+                interleaved: true
               ),
               let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
             throw SpeechRecognitionFailure.microphoneUnavailable
@@ -694,6 +818,7 @@ private final class PCM16AudioCapture {
         guard isRunning || converter != nil else { return }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        engine.reset()
         converter = nil
         isRunning = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -724,9 +849,13 @@ private final class PCM16AudioCapture {
 
         guard conversionError == nil,
               status != .error,
-              let channel = output.int16ChannelData?.pointee else {
+              output.frameLength > 0,
+              let audioData = output.audioBufferList.pointee.mBuffers.mData else {
             return nil
         }
-        return Data(bytes: channel, count: Int(output.frameLength) * MemoryLayout<Int16>.size)
+        return Data(
+            bytes: audioData,
+            count: Int(output.audioBufferList.pointee.mBuffers.mDataByteSize)
+        )
     }
 }

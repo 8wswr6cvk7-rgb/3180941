@@ -10,10 +10,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var store: ArchiveStore
     @State private var favoritesExpanded = true
-#if DEBUG
-    @State private var showDemoResetConfirmation = false
-    @State private var isResettingDemo = false
-#endif
+    @State private var showProfileEditor = false
 
     private var favorites: [CityArchive] {
         store.archives.filter { store.favoriteIDs.contains($0.id) }
@@ -60,67 +57,57 @@ struct ProfileView: View {
         .background(Color.tanPaper.ignoresSafeArea())
         .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showProfileEditor) {
+            ProfileEditorSheet()
+                .environmentObject(store)
+        }
         .navigationDestination(for: ArchiveDetailRoute.self) { route in
             if let archive = store.archive(with: route.archiveID) {
                 ArchiveDetailView(archive: archive, initialSection: route.initialSection)
             }
         }
-#if DEBUG
-        .confirmationDialog("恢复比赛演示数据？", isPresented: $showDemoResetConfirmation, titleVisibility: .visible) {
-            Button(isResettingDemo ? "正在恢复…" : "恢复统一 Seed 数据", role: .destructive) {
-                guard !isResettingDemo else { return }
-                isResettingDemo = true
-                Task {
-                    await store.resetCompetitionDemoData()
-                    isResettingDemo = false
-                }
-            }
-            .disabled(isResettingDemo)
-        } message: {
-            Text("将清除本机新增档案、补档图片、点赞、到访与状态线索，并恢复比赛 Seed 数据。")
-        }
-#endif
     }
 
     private var profileHeader: some View {
-        HStack(spacing: 14) {
-            Circle()
-                .fill(Color.tanPrimary.opacity(0.18))
-                .frame(width: 72, height: 72)
-                .overlay {
-                    Image(systemName: store.selectedRole == .stallOwner ? "storefront.fill" : "person.fill")
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundStyle(Color.tanPrimary)
+        Button {
+            showProfileEditor = true
+        } label: {
+            HStack(spacing: 14) {
+                ProfileAvatarView(size: 72)
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(store.user.name)
+                        .font(.system(size: 25, weight: .black))
+                        .foregroundStyle(Color.tanInk)
+                    Text(profileTitle)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.tanInk.opacity(0.62))
                 }
-            VStack(alignment: .leading, spacing: 7) {
-                Text(store.user.name)
-                    .font(.system(size: 25, weight: .black))
-                    .foregroundStyle(Color.tanInk)
-                Text(store.selectedRole == .stallOwner ? "摊户 · AI 建档管理" : "市景侠 · 社区补档者")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.tanInk.opacity(0.62))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(Color.tanInk.opacity(0.38))
             }
-            Spacer()
+            .padding(18)
+            .background {
+                LinearGradient(
+                    colors: [.white, Color.tanPrimary.opacity(0.12)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous)
+                    .stroke(Color.white.opacity(0.8))
+            }
+            .shadow(color: Color.tanInk.opacity(0.07), radius: 16, x: 0, y: 9)
         }
-        .padding(18)
-        .background {
-            LinearGradient(
-                colors: [.white, Color.tanPrimary.opacity(0.12)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-        .clipShape(RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: TanRadius.large, style: .continuous)
-                .stroke(Color.white.opacity(0.8))
-        }
-        .shadow(color: Color.tanInk.opacity(0.07), radius: 16, x: 0, y: 9)
-#if DEBUG
-        .onLongPressGesture(minimumDuration: 2) {
-            showDemoResetConfirmation = true
-        }
-#endif
+        .buttonStyle(.plain)
+        .accessibilityLabel("编辑头像和昵称，查看称号")
+    }
+
+    private var profileTitle: String {
+        store.selectedRole == .stallOwner ? "摊户 · AI 建档管理" : "市景侠 · 社区补档者"
     }
 
     private var visitorFootprintCard: some View {
@@ -229,7 +216,7 @@ struct ProfileView: View {
             Text("收到的社区线索")
                 .font(.system(size: 18, weight: .black))
                 .foregroundStyle(Color.tanInk)
-            Text("评论、现场照片和状态确认会汇总到对应档案中。")
+            Text("评论、现场影像和状态确认会汇总到对应档案中。")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
 
@@ -404,5 +391,184 @@ private struct StallOwnerCommunityRow: View {
         .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(archive.name)，\(contributionCount) 条社区补档，\(statusCount) 条状态线索")
+    }
+}
+
+private struct ProfileAvatarView: View {
+    @EnvironmentObject private var store: ArchiveStore
+    let size: CGFloat
+    @State private var image: UIImage?
+
+    var body: some View {
+        Circle()
+            .fill(Color.tanPrimary.opacity(0.18))
+            .frame(width: size, height: size)
+            .overlay {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
+                } else {
+                    Image(systemName: store.selectedRole == .stallOwner ? "storefront.fill" : "person.fill")
+                        .font(.system(size: size * 0.42, weight: .bold))
+                        .foregroundStyle(Color.tanPrimary)
+                }
+            }
+            .task(id: store.user.avatarAttachment?.id) {
+                guard let attachment = store.user.avatarAttachment else {
+                    image = nil
+                    return
+                }
+                image = await store.image(for: attachment)
+            }
+    }
+}
+
+private struct ProfileEditorSheet: View {
+    @EnvironmentObject private var store: ArchiveStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name = ""
+    @State private var pendingImages: [PendingImage] = []
+    @State private var removeExistingAvatar = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    private var title: String {
+        store.selectedRole == .stallOwner ? "摊户 · 档案维护者" : "市景侠 · 社区补档者"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack {
+                        Spacer()
+                        if let pending = pendingImages.first {
+                            Image(uiImage: pending.image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 104, height: 104)
+                                .clipShape(Circle())
+                        } else if removeExistingAvatar {
+                            defaultAvatar
+                        } else {
+                            ProfileAvatarView(size: 104)
+                        }
+                        Spacer()
+                    }
+
+                    ImageAttachmentPicker(
+                        pendingImages: $pendingImages,
+                        maximumSelectionCount: 1,
+                        emptyPrompt: "拍摄头像，或从相册选择一张照片",
+                        singleImagePreviewStyle: .square
+                    )
+
+                    if store.user.avatarAttachment != nil,
+                       pendingImages.isEmpty,
+                       !removeExistingAvatar {
+                        Button(role: .destructive) {
+                            removeExistingAvatar = true
+                        } label: {
+                            Label("移除当前头像", systemImage: "trash")
+                        }
+                        .font(.system(size: 13, weight: .bold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("昵称")
+                            .font(.system(size: 14, weight: .black))
+                        TextField("输入昵称", text: $name)
+                            .textInputAutocapitalization(.never)
+                            .submitLabel(.done)
+                            .padding(.horizontal, 14)
+                            .frame(height: 48)
+                            .background(Color.tanPaper)
+                            .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("我的称号")
+                            .font(.system(size: 14, weight: .black))
+                        Label(title, systemImage: "medal.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.tanPrimary)
+                        Label(store.user.rank, systemImage: "chart.bar.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Text("称号由当前身份和社区贡献生成，暂不支持手动修改。")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(15)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.tanPaper)
+                    .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.warningRed)
+                    }
+                }
+                .padding(18)
+            }
+            .background(Color.tanPaper.ignoresSafeArea())
+            .navigationTitle("编辑个人资料")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "保存中…" : "保存") {
+                        save()
+                    }
+                    .fontWeight(.bold)
+                    .disabled(
+                        isSaving ||
+                        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                }
+            }
+        }
+        .onAppear {
+            name = store.user.name
+        }
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    private var defaultAvatar: some View {
+        Circle()
+            .fill(Color.tanPrimary.opacity(0.18))
+            .frame(width: 104, height: 104)
+            .overlay {
+                Image(systemName: store.selectedRole == .stallOwner ? "storefront.fill" : "person.fill")
+                    .font(.system(size: 42, weight: .bold))
+                    .foregroundStyle(Color.tanPrimary)
+            }
+    }
+
+    private func save() {
+        guard !isSaving else { return }
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                try await store.updateProfile(
+                    name: name,
+                    avatarImage: pendingImages.first,
+                    removeExistingAvatar: removeExistingAvatar
+                )
+                dismiss()
+            } catch {
+                errorMessage = "头像保存失败，请重试或继续使用当前头像。"
+                isSaving = false
+            }
+        }
     }
 }

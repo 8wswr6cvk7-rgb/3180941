@@ -54,7 +54,7 @@ struct XilianMemoryTarget: Identifiable, Hashable {
         case .lit:
             return "伙伴，\(archive.name) 被你点亮过，记忆又清晰了一点。"
         case .needsArchive:
-            if archive.status == .atRisk {
+            if archive.presentationStatus == .atRisk {
                 return "伙伴，\(archive.name) 有段时间没人确认了。如果你路过，可以帮它留下一点线索。"
             }
             return "伙伴，\(archive.name) 这里有一段需要补档的记忆。"

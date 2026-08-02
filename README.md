@@ -188,11 +188,16 @@ Create `TanApp/LocalSecrets.json`:
 {
   "dashscopeAPIKey": "YOUR_DASHSCOPE_API_KEY",
   "qwenModel": "qwen-plus",
+  "qwenVisionModel": "qwen-vl-plus",
   "funASRModel": "fun-asr-realtime"
 }
 ```
 
 `LocalSecrets.json` is excluded by `.gitignore`. Do not commit a real API key.
+The repository includes `TanApp/LocalSecrets.example.json` as a safe template;
+copy it to `TanApp/LocalSecrets.json` locally and replace only the placeholder
+with your own key. Never paste keys into Swift files, README files, issue
+reports, screenshots, or console logs.
 
 Open `TanApp.xcodeproj`, select the `3180941` scheme, choose a simulator or a signing team for a physical device, and run the application.
 

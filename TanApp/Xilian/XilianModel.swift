@@ -32,7 +32,7 @@ enum XilianQuickQuestion: String, CaseIterable, Identifiable {
 
 enum XilianCopy {
     static func statusHint(for archive: CityArchive) -> String {
-        switch archive.status {
+        switch archive.presentationStatus {
         case .open:
             return "伙伴，这个摊最近还挺活跃，我可以陪你去看看。"
         case .atRisk:
@@ -43,7 +43,7 @@ enum XilianCopy {
     }
 
     static func detailHint(for archive: CityArchive) -> String {
-        switch archive.status {
+        switch archive.presentationStatus {
         case .open:
             return "伙伴，这个摊最近还活跃，可以补一张最新照片。"
         case .atRisk:
@@ -70,7 +70,7 @@ enum XilianCopy {
             }
             return "伙伴，这是 \(selectedArchive.ownerName) 的 \(selectedArchive.name)。\(selectedArchive.summary)"
         case .needsHelp:
-            let count = nearbyArchives.filter { $0.status == .atRisk }.count
+            let count = nearbyArchives.filter { $0.presentationStatus == .atRisk }.count
             if count > 0 {
                 return "伙伴，有 \(count) 个摊位需要大家帮忙确认。路过时，可以帮它留下一张照片或一句话。"
             }

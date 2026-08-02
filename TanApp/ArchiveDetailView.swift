@@ -7,6 +7,7 @@
 
 import SwiftUI
 import UIKit
+import AVKit
 
 enum MetricIconOption: String, CaseIterable, Identifiable {
     case friendly
@@ -243,9 +244,9 @@ private enum CommunityDeletionTarget {
         case .photo:
             return "影像及其本地文件将被清理，删除后无法恢复。"
         case .comment:
-            return "补档正文和所附图片将被清理，删除后无法恢复。"
+            return "补档正文和所附影像将被清理，删除后无法恢复。"
         case .status:
-            return "状态线索和所附现场照片将被清理，删除后无法恢复。"
+            return "状态线索和所附现场影像将被清理，删除后无法恢复。"
         }
     }
 }
@@ -272,6 +273,7 @@ struct ArchiveDetailView: View {
     @State private var toastMessage: String?
     @State private var selectedBookingDay = 0
     @State private var detailContent: ArchiveDetailContent
+    @State private var selectedArchivePhoto: PhotoEntry?
 
     init(archive: CityArchive, initialSection: ArchiveDetailSection = .top) {
         self.archive = archive
@@ -383,6 +385,13 @@ struct ArchiveDetailView: View {
             StallStatusConfirmationSheet(archive: latestArchive)
                 .environmentObject(store)
         }
+        .fullScreenCover(item: $selectedArchivePhoto) { photo in
+            ArchiveImageGallery(
+                photos: latestArchive.photos,
+                initialPhotoID: photo.id
+            )
+            .environmentObject(store)
+        }
         .confirmationDialog(
             pendingDeletion?.title ?? "确认删除？",
             isPresented: Binding(
@@ -425,7 +434,7 @@ struct ArchiveDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                StatusBadge(status: latestArchive.status)
+                StatusBadge(status: latestArchive.presentationStatus)
             }
 
             FlowTags(tags: latestArchive.tags)
@@ -772,7 +781,7 @@ struct ArchiveDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("档案影像")
                     .font(.system(size: 18, weight: .bold))
-                Text("这里展示已归入档案的街景、工序与摊位照片。")
+                Text("这里展示已归入档案的街景、工序与摊位影像，均经授权收录。")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
@@ -783,8 +792,17 @@ struct ArchiveDetailView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 10) {
                     ForEach(latestArchive.photos) { photo in
                         VStack(alignment: .leading, spacing: 6) {
-                            LocalAttachmentPreview(attachment: photo.attachment, caption: photo.caption)
-                                .frame(height: 96)
+                            Button {
+                                selectedArchivePhoto = photo
+                            } label: {
+                                LocalAttachmentPreview(
+                                    attachment: photo.attachment,
+                                    caption: photo.caption,
+                                    style: .square
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("查看档案影像：\(photo.caption)")
                             Button {
                                 guard !store.hasLikedPhoto(photo) else { return }
                                 store.likePhoto(photo, in: latestArchive)
@@ -811,6 +829,7 @@ struct ArchiveDetailView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -822,14 +841,14 @@ struct ArchiveDetailView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("社区共建")
                     .font(.system(size: 18, weight: .bold))
-                Text(isOwnArchive ? "看看大家留下的故事、照片和状态线索。" : "写下故事、添加现场照片，或确认最近看到的状态。")
+                Text(isOwnArchive ? "看看大家留下的故事、影像和状态线索。" : "写下故事、添加现场影像，或确认最近看到的状态。")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
 
             if canUploadPhoto {
                 VStack(alignment: .leading, spacing: 10) {
-                    ChineseFriendlyTextField(placeholder: "写下故事，也可以同时附一张照片", text: $commentText)
+                    ChineseFriendlyTextField(placeholder: "写下故事，也可以同时附照片或视频", text: $commentText)
                         .padding(.horizontal, 12)
                         .frame(height: 42)
                         .background(.white)
@@ -842,7 +861,8 @@ struct ArchiveDetailView: View {
                     ImageAttachmentPicker(
                         pendingImages: $contributionImages,
                         maximumSelectionCount: 3,
-                        emptyPrompt: "可拍照或从相册添加最多 3 张现场照片"
+                        emptyPrompt: "可添加最多 3 项现场照片或视频",
+                        allowsVideos: true
                     )
 
                     Button(isPublishingContribution ? "正在发布…" : "发布补档") {
@@ -946,6 +966,30 @@ struct ArchiveDetailView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if latestArchive.attentionAssessment.level == .atRisk {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(latestArchive.attentionAssessment.reasons, id: \.self) { reason in
+                            Label(reason, systemImage: "circle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.tanInk.opacity(0.72))
+                        }
+                        Text("预警根据社区线索生成，仅用于提示关注，不代表摊位已经消失。")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label("查看消失预警依据", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(Color.warningRed)
+                }
+                .padding(12)
+                .background(Color.warningRed.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: TanRadius.small, style: .continuous))
+            }
+
             if canUploadPhoto {
                 Button {
                     showStatusConfirmation = true
@@ -978,11 +1022,21 @@ struct ArchiveDetailView: View {
                                 .foregroundStyle(Color.tanInk.opacity(0.8))
                         }
                         if let attachment = confirmation.attachment {
-                            Label("附带现场照片", systemImage: "camera.fill")
+                            Label(
+                                attachment.resolvedMediaType == .video
+                                    ? "附带现场视频"
+                                    : "附带现场照片",
+                                systemImage: attachment.resolvedMediaType == .video
+                                    ? "video.fill"
+                                    : "camera.fill"
+                            )
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundStyle(Color.heritageGreen)
-                            LocalAttachmentPreview(attachment: attachment, caption: attachment.caption ?? "现场照片")
-                                .frame(height: 130)
+                            LocalAttachmentPreview(
+                                attachment: attachment,
+                                caption: attachment.caption ?? "现场影像",
+                                allowsFullScreen: true
+                            )
                         }
                         if confirmation.contributorName == store.user.name {
                             Button(role: .destructive) {
@@ -1125,13 +1179,15 @@ struct ArchiveDetailView: View {
             do {
                 try await store.addComment(to: latestArchive, text: text, pendingImages: contributionImages)
                 showToast(
-                    contributionImages.isEmpty ? "昔涟：伙伴，这句故事已经加入档案。" : "昔涟：伙伴，现场照片和线索已经加入档案。",
+                    contributionImages.isEmpty
+                        ? "昔涟：伙伴，这句故事已经加入档案。"
+                        : "昔涟：伙伴，现场影像和线索已经加入档案。",
                     binding: $toastMessage
                 )
                 commentText = ""
                 contributionImages = []
             } catch {
-                showToast("图片保存失败，文字仍保留，可以重试。", binding: $toastMessage)
+                showToast("影像保存失败，文字仍保留，可以重试。", binding: $toastMessage)
             }
             isPublishingContribution = false
         }
@@ -1170,14 +1226,15 @@ private struct ArchiveManualEditView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 editorHeader
-                editSection("档案现场照片") {
-                    Text("可拍照或从相册选择 1 张照片，保存后会加入档案影像。")
+                editSection("档案现场影像") {
+            Text("可一次选择最多 6 项照片或视频，保存后会加入档案影像。")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                     ImageAttachmentPicker(
                         pendingImages: $pendingImages,
-                        maximumSelectionCount: 1,
-                        emptyPrompt: "添加摊位、工具或作品照片"
+                        maximumSelectionCount: 6,
+                        emptyPrompt: "添加摊位、工具或作品的照片或视频",
+                        allowsVideos: true
                     )
                     if let saveError {
                         Text(saveError)
@@ -1539,11 +1596,15 @@ private struct ArchiveManualEditView: View {
                 status: status,
                 historicalStops: historicalStops
             )
-            if let image = pendingImages.first {
+            if !pendingImages.isEmpty {
                 do {
-                    try await store.addPhoto(to: archive, caption: "摊户更新现场照片", pendingImage: image)
+                    try await store.addPhotos(
+                        to: archive,
+                        caption: "摊户更新现场影像",
+                        pendingImages: pendingImages
+                    )
                 } catch {
-                    saveError = "照片保存失败，请重试或移除图片后继续保存。"
+                    saveError = "影像保存失败，请重试或移除附件后继续保存。"
                     isSaving = false
                     return
                 }
@@ -1841,30 +1902,167 @@ private struct CommentAttachmentGallery: View {
     }
 }
 
+private struct ArchiveImageGallery: View {
+    @Environment(\.dismiss) private var dismiss
+    let photos: [PhotoEntry]
+    let initialPhotoID: UUID
+    @State private var selectedPhotoID: UUID
+
+    init(photos: [PhotoEntry], initialPhotoID: UUID) {
+        self.photos = photos
+        self.initialPhotoID = initialPhotoID
+        _selectedPhotoID = State(initialValue: initialPhotoID)
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            if photos.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.system(size: 34, weight: .bold))
+                    Text("这张档案影像暂时无法加载")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white.opacity(0.78))
+            } else {
+                TabView(selection: $selectedPhotoID) {
+                    ForEach(photos) { photo in
+                        VStack(spacing: 16) {
+                            Spacer(minLength: 70)
+                            FullResolutionAttachmentImage(attachment: photo.attachment)
+                                .padding(.horizontal, 12)
+                            Text(photo.caption)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.88))
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 20)
+                            Spacer(minLength: 50)
+                        }
+                        .tag(photo.id)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: photos.count > 1 ? .automatic : .never))
+            }
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.62))
+                    .clipShape(Circle())
+            }
+            .padding(.top, 14)
+            .padding(.trailing, 16)
+            .accessibilityLabel("关闭影像浏览")
+        }
+    }
+}
+
+private struct FullResolutionAttachmentImage: View {
+    @EnvironmentObject private var store: ArchiveStore
+    let attachment: PhotoAttachment?
+    @State private var image: UIImage?
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        Group {
+            if attachment?.resolvedMediaType == .video, let player {
+                VideoPlayer(player: player)
+                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                    .onAppear { player.play() }
+                    .onDisappear { player.pause() }
+            } else if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous)
+                    .fill(Color.white.opacity(0.12))
+                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                    .overlay {
+                        Image(
+                            systemName: attachment?.resolvedMediaType == .video
+                                ? "video.slash.fill"
+                                : "photo.badge.exclamationmark"
+                        )
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.62))
+                    }
+            }
+        }
+        .task(id: attachment?.id) {
+            guard let attachment else {
+                image = nil
+                player = nil
+                return
+            }
+            if attachment.resolvedMediaType == .video {
+                image = nil
+                if let url = await store.videoURL(for: attachment) {
+                    player = AVPlayer(url: url)
+                } else {
+                    player = nil
+                }
+            } else {
+                player = nil
+                image = await store.image(for: attachment, thumbnail: false)
+            }
+        }
+    }
+}
+
 private struct LocalAttachmentImage: View {
     @EnvironmentObject private var store: ArchiveStore
     let attachment: PhotoAttachment?
     @State private var image: UIImage?
+    @State private var showViewer = false
 
     var body: some View {
-        ZStack {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.18))
-                    .overlay {
-                        Image(systemName: attachment == nil ? "photo" : "photo.badge.exclamationmark")
-                            .foregroundStyle(Color.tanInk.opacity(0.4))
-                    }
+        GeometryReader { proxy in
+            ZStack {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.18))
+                        .overlay {
+                            Image(systemName: attachment == nil ? "photo" : "photo.badge.exclamationmark")
+                                .foregroundStyle(Color.tanInk.opacity(0.4))
+                        }
+                }
+
+                if attachment?.resolvedMediaType == .video {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 17, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(.black.opacity(0.58))
+                        .clipShape(Circle())
+                }
             }
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .clipped()
+        .aspectRatio(AttachmentPreviewStyle.photo4x3.aspectRatio, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .onTapGesture {
+            showViewer = attachment != nil
+        }
+        .fullScreenCover(isPresented: $showViewer) {
+            AttachmentMediaViewer(attachment: attachment)
+                .environmentObject(store)
+        }
         .task(id: attachment?.id) {
             guard let attachment else {
                 image = nil
@@ -1879,23 +2077,41 @@ private struct LocalAttachmentPreview: View {
     @EnvironmentObject private var store: ArchiveStore
     let attachment: PhotoAttachment?
     let caption: String
+    var style: AttachmentPreviewStyle = .photo4x3
+    var allowsFullScreen = false
     @State private var image: UIImage?
+    @State private var showViewer = false
 
     var body: some View {
-        Group {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.18))
-                    .overlay {
-                        Image(systemName: attachment == nil ? "photo" : "photo.badge.exclamationmark")
-                            .foregroundStyle(Color.tanInk.opacity(0.4))
-                    }
+        GeometryReader { proxy in
+            ZStack {
+                if let image {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.18))
+                        .overlay {
+                            Image(systemName: attachment == nil ? "photo" : "photo.badge.exclamationmark")
+                                .foregroundStyle(Color.tanInk.opacity(0.4))
+                        }
+                }
+
+                if attachment?.resolvedMediaType == .video {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 40, height: 40)
+                        .background(.black.opacity(0.58))
+                        .clipShape(Circle())
+                }
             }
         }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(style.aspectRatio, contentMode: .fit)
         .overlay(alignment: .bottomLeading) {
             Text(caption)
                 .font(.system(size: 11, weight: .semibold))
@@ -1905,13 +2121,62 @@ private struct LocalAttachmentPreview: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.white.opacity(0.72))
         }
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: TanRadius.medium, style: .continuous))
+        .overlay {
+            if allowsFullScreen, attachment != nil {
+                Button {
+                    showViewer = true
+                } label: {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    attachment?.resolvedMediaType == .video ? "播放现场视频" : "查看现场照片"
+                )
+            }
+        }
+        .fullScreenCover(isPresented: $showViewer) {
+            AttachmentMediaViewer(attachment: attachment)
+                .environmentObject(store)
+        }
         .task(id: attachment?.id) {
             guard let attachment else {
                 image = nil
                 return
             }
             image = await store.image(for: attachment)
+        }
+    }
+}
+
+private struct AttachmentMediaViewer: View {
+    @Environment(\.dismiss) private var dismiss
+    let attachment: PhotoAttachment?
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            FullResolutionAttachmentImage(attachment: attachment)
+                .padding(.horizontal, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.62))
+                    .clipShape(Circle())
+            }
+            .padding(.top, 14)
+            .padding(.trailing, 16)
+            .accessibilityLabel("关闭影像浏览")
         }
     }
 }
@@ -1953,7 +2218,8 @@ private struct StallStatusConfirmationSheet: View {
                     ImageAttachmentPicker(
                         pendingImages: $pendingImages,
                         maximumSelectionCount: 1,
-                        emptyPrompt: "可附 1 张现场照片"
+                        emptyPrompt: "可附 1 项现场照片或视频",
+                        allowsVideos: true
                     )
 
                     if let errorMessage {
@@ -1991,7 +2257,7 @@ private struct StallStatusConfirmationSheet: View {
                 )
                 dismiss()
             } catch {
-                errorMessage = "图片保存失败，请重试或去掉照片后继续提交。"
+                errorMessage = "影像保存失败，请重试或移除附件后继续提交。"
                 isSubmitting = false
             }
         }

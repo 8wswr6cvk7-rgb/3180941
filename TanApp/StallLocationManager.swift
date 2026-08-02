@@ -13,15 +13,9 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
     @Published var authorizationStatus: CLAuthorizationStatus
 
     private let manager = CLLocationManager()
-    private static let tianfuSquare = CLLocationCoordinate2D(latitude: 30.6570, longitude: 104.0658)
-
     override init() {
         authorizationStatus = manager.authorizationStatus
-#if targetEnvironment(simulator)
-        currentCoordinate = Self.tianfuSquare
-#else
         currentCoordinate = nil
-#endif
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
@@ -29,9 +23,6 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
     }
 
     func requestAndStartUpdating() {
-#if targetEnvironment(simulator)
-        currentCoordinate = Self.tianfuSquare
-#else
         guard CLLocationManager.locationServicesEnabled() else {
             return
         }
@@ -46,7 +37,6 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
         @unknown default:
             break
         }
-#endif
     }
 
     func stopUpdating() {
@@ -61,17 +51,13 @@ final class StallLocationManager: NSObject, ObservableObject, CLLocationManagerD
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-#if targetEnvironment(simulator)
-        currentCoordinate = Self.tianfuSquare
-#else
         currentCoordinate = locations.last?.coordinate
-#endif
     }
 }
 
 enum XilianGuideOriginSource: Equatable {
     case liveLocation
-    case chengduDemoLocation
+    case chengduReferenceLocation
 }
 
 struct XilianGuideOriginDecision {
@@ -80,26 +66,26 @@ struct XilianGuideOriginDecision {
 }
 
 enum XilianGuideOriginPolicy {
-    static let chengduDemoCoordinate = CLLocationCoordinate2D(latitude: 30.6570, longitude: 104.0658)
+    static let chengduReferenceCoordinate = CLLocationCoordinate2D(latitude: 30.6570, longitude: 104.0658)
     static let chengduRange: CLLocationDistance = 50_000
 
     static func decision(for coordinate: CLLocationCoordinate2D?) -> XilianGuideOriginDecision {
         guard let coordinate, CLLocationCoordinate2DIsValid(coordinate) else {
             return XilianGuideOriginDecision(
-                coordinate: chengduDemoCoordinate,
-                source: .chengduDemoLocation
+                coordinate: chengduReferenceCoordinate,
+                source: .chengduReferenceLocation
             )
         }
 
         let current = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         let chengdu = CLLocation(
-            latitude: chengduDemoCoordinate.latitude,
-            longitude: chengduDemoCoordinate.longitude
+            latitude: chengduReferenceCoordinate.latitude,
+            longitude: chengduReferenceCoordinate.longitude
         )
         guard current.distance(from: chengdu) <= chengduRange else {
             return XilianGuideOriginDecision(
-                coordinate: chengduDemoCoordinate,
-                source: .chengduDemoLocation
+                coordinate: chengduReferenceCoordinate,
+                source: .chengduReferenceLocation
             )
         }
         return XilianGuideOriginDecision(coordinate: coordinate, source: .liveLocation)
