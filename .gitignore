@@ -25,6 +25,13 @@ DocumentAssets/
 /*.pdf
 /*.png
 /*.html
+/*.docx
+~$*.docx
+
+# Local handoff and Codex working files
+.codex_resume/
+/队友开发交接说明.md
+/个人简历_*.docx
 
 # macOS
 .DS_Store
